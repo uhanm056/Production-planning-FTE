@@ -179,10 +179,15 @@ details.lendbox summary .muted{font-style:italic}
 .pchip.absent{width:auto;display:inline-flex;opacity:.75;margin:2px 4px 2px 0}
 .padd{border:1px dashed var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:4px 8px;font:inherit;font-size:12px;cursor:pointer;text-align:left}
 .padd:hover{border-color:var(--info);color:var(--info)}
-.rtab-wrap{box-shadow:none;border:1px solid var(--line)} .rtab{table-layout:fixed;min-width:640px} .rtab th:first-child,.rtab td.rpos{width:170px}
+.rtab-wrap{box-shadow:none;border:1px solid var(--line)} .rtab{table-layout:fixed;min-width:640px} 
 .rtab td{padding:3px 6px;vertical-align:middle;white-space:normal} .rtab td.rpos{font-weight:600;color:var(--th-text);font-size:12.5px}
 .rtab tbody tr:hover{background:transparent} .rtab .pchip{min-height:28px;padding:2px 6px}
-.rtab tr.rgap td{background:var(--crit-soft)} .rh12{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0}
+.rtab tr.rgap td{background:var(--crit-soft)} .rtab col.cpos{width:170px} .rtab col.clen{width:58px} .rtab td.rlen{padding-left:0}
+.lenbtn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:2px 8px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.lenbtn.on{background:var(--navy-soft);border-color:var(--info);color:var(--info)} .lenbtn:hover{border-color:var(--info)}
+.r12{font-size:12.5px;color:var(--muted);align-self:center} .r12 b{color:var(--text)}
+.r12sum{margin-bottom:12px;border-top-color:var(--navy-2)} .r12sum summary{cursor:pointer} .r12sum tr.tot td{border-top:2px solid var(--navy)}
+.rh12{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0}
 .rposbtn{all:unset;cursor:pointer;font-weight:600;border-bottom:1px dashed var(--line)} .rposbtn:hover,.rposbtn:focus-visible{color:var(--info);border-bottom-color:var(--info)}
 .rempty{color:var(--muted);font-size:12px;font-style:italic;border:1px dashed var(--line);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;width:100%;text-align:left;font-family:inherit} .rempty:hover{border-color:var(--info);color:var(--info)} .rtab tr.rfree td.rpos{color:var(--warn-text)} .rmiss{color:var(--crit);font-size:12px;font-weight:600}
 .rtab tr.radd td{border-bottom:0} .rtab .padd{width:100%}
@@ -900,6 +905,7 @@ const slotOf = (p, week) => STATE.plans[week]?.assign?.[p.id] || { line: p.home,
 const h12Of = (p, week) => STATE.plans[week]?.assign?.[p.id]?.h12 ?? !!p.h12;
 const SHIFT_TIME = { 8: { R: '06:00 - 14:00', O: '14:00 - 22:00', N: '22:00 - 06:00' }, 12: { R: '06:00 - 18:00', N: '18:00 - 06:00' } };
 const lenOpts = h12 => `<option value="8" ${h12 ? '' : 'selected'}>8 h</option><option value="12" ${h12 ? 'selected' : ''}>12 h</option>`;
+const lenBtn = (p, week) => `<button class="lenbtn ${h12Of(p, week) ? 'on' : ''}" data-len="${esc(p.id)}" title="Přepnout 8 h / 12 h pro tento týden">${h12Of(p, week) ? '12 h' : '8 h'}</button>`;
 const posThisWeek = (p, week) => STATE.plans[week]?.assign?.[p.id]?.pos ?? p.pos ?? '';
 // lidé k dispozici za den na lince (přítomní, bez TL/TR); bez lidí v aplikaci platí ručně zadané číslo
 function availOf(line, week){
@@ -911,7 +917,7 @@ function availOf(line, week){
 // nepřítomní vypadnou, díry se kryjí z přebytků jen lidmi se Z/P na cílové lince (nejdřív stejná směna)
 function generatePlan(week){
   const cur = STATE.plans[week], P = operators(), assign = {};
-  P.forEach(p => { const a = cur?.assign?.[p.id]; assign[p.id] = a?.locked ? { ...a } : { line: p.home, shift: p.shift }; });
+  P.forEach(p => { const a = cur?.assign?.[p.id]; assign[p.id] = a?.locked ? { ...a } : { line: p.home, shift: p.shift, ...(a?.h12 != null ? { h12: a.h12 } : {}) }; });
   const absent = new Set(P.filter(p => isAbsent(p, week)).map(p => p.id));
   const slots = [];
   M().lines.forEach(l => { const n = needFor(l, week); if (n) SHIFTS.forEach(s => slots.push({ l: l.id, s, need: n[s] || 0 })); });
@@ -958,7 +964,7 @@ function personChip(p, week, lineKey, inTable){
     <span class="sk ${lvl || 'x'}">${lvl || '·'}</span><span class="pn">${esc(p.name)}</span>
     ${p.pos && !inTable ? `<span class="pp">${esc(p.pos)}</span>` : ''}
     ${a.moved ? `<span class="badge b">z ${esc(colName(a.from))}${a.fromShift && a.fromShift !== a.shift ? ' ' + a.fromShift : ''}</span>` : ''}
-    ${a.locked ? '<span class="badge a">ručně</span>' : ''}${h12Of(p, week) ? '<span class="badge b">12h</span>' : ''}
+    ${a.locked ? '<span class="badge a">ručně</span>' : ''}${h12Of(p, week) && !inTable ? '<span class="badge b">12h</span>' : ''}
     ${ab.length && !isAbsent(p, week) ? `<span class="badge a">částečně chybí</span>` : ''}</button>`;
 }
 function renderRoster(){
@@ -968,6 +974,7 @@ function renderRoster(){
   if (!w){ el.innerHTML = emptyState('Nejdřív naimportuj přehled odvolávek – určí plánovaný týden.'); return; }
   const plan = STATE.plans[w], S = planSummary(w);
   const P = operators(), present = P.filter(p => !isAbsent(p, w)).length, absent = P.length - present;
+  const on12 = P.filter(p => !isAbsent(p, w) && h12Of(p, w)).length;
   const moved = plan ? Object.values(plan.assign).filter(a => a.moved).length : 0;
   const missing = S.reduce((n, r) => n + r.missing, 0), surplus = S.filter(r => r.need).reduce((n, r) => n + r.surplus, 0);
   const days = weekDays(w), d = s => `${+s.slice(8)}. ${+s.slice(5, 7)}.`;
@@ -979,7 +986,14 @@ function renderRoster(){
       <div class="card kpi"><div class="lbl">Přesuny</div><div class="val">${fmt(moved)}</div><div class="sub">jen lidé se Z/P na cílové lince</div></div>
       <div class="card kpi ${missing ? 'alert' : 'ok'}"><div class="lbl">Chybí OP</div><div class="val">${fmt(missing)}</div><div class="sub">neobsazená místa na směnách</div></div>
       <div class="card kpi"><div class="lbl">Přebytek OP</div><div class="val">${fmt(surplus)}</div><div class="sub">nad potřebu linek</div></div>
-    </div>`;
+      <div class="card kpi"><div class="lbl">Na 12 h</div><div class="val">${fmt(on12)}</div><div class="sub">z ${fmt(present)} lidí (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)}</div></div>
+    </div>
+    <details class="card r12sum"><summary><b>12 h po procesech</b> <span class="note">– celkem za výrobu ${fmt(on12)} z ${fmt(present)}</span></summary>
+      <div class="tbl-wrap" style="box-shadow:none;margin-top:8px"><table><thead><tr><th>Proces</th><th class="num">Lidé</th><th class="num">12 h</th><th class="num">8 h</th><th class="num">Podíl 12 h</th><th class="num">R 12 h</th><th class="num">O 12 h</th><th class="num">N 12 h</th></tr></thead><tbody>
+      ${S.map(r => { const all = SHIFTS.flatMap(sh => r.shifts[sh]); if (!all.length) return ''; const t = all.filter(p => h12Of(p, w)).length, c = sh => r.shifts[sh].filter(p => h12Of(p, w)).length;
+        return `<tr><td>${esc(r.name)}</td><td class="num">${all.length}</td><td class="num"><b>${t}</b></td><td class="num">${all.length - t}</td><td class="num">${fmt(t / all.length * 100)} %</td><td class="num">${c('R') || ''}</td><td class="num">${c('O') || ''}</td><td class="num">${c('N') || ''}</td></tr>`; }).join('')}
+      <tr class="tot"><td><b>Výroba celkem</b></td><td class="num"><b>${fmt(present)}</b></td><td class="num"><b>${fmt(on12)}</b></td><td class="num"><b>${fmt(present - on12)}</b></td><td class="num"><b>${present ? fmt(on12 / present * 100) : 0} %</b></td><td></td><td></td><td></td></tr>
+      </tbody></table></div></details>`;
   h += S.map(r => {
     const line = lineById(r.key), n = r.need;
     const srcTxt = !n ? 'bez potřeby' : n.src === 'norma' ? 'potřeba z normy' : n.src === 'ručně' ? 'potřeba zadaná ručně' : `potřeba = obsazení z rozpisu ${(STATE.rosterMeta?.weeks || []).map(x => 'CW' + x).join(', ')}`;
@@ -994,18 +1008,19 @@ function renderRoster(){
     const order = [...groups.values()].sort((a, b) => tail(a.k) - tail(b.k) || a.row - b.row || a.k.localeCompare(b.k, 'cs'));
     const hd = sh => { const got = r.shifts[sh].length, need = n ? n[sh] || 0 : null, g = need == null ? 0 : got - need;
       const n12 = r.shifts[sh].filter(p => h12Of(p, w)).length;
-      return `<th>${SHIFT_TXT[sh]} <span class="badge ${need == null ? 'b' : g < 0 ? 'r' : g > 0 ? 'a' : 'g'}">${got}${need == null ? '' : ' / ' + need}${g < 0 ? ` · chybí ${-g}` : g > 0 ? ` · +${g}` : ''}</span>${n12 ? ` <span class="rh12">z toho 12 h: ${n12}</span>` : ''}</th>`; };
+      return `<th colspan="2">${SHIFT_TXT[sh]} <span class="badge ${need == null ? 'b' : g < 0 ? 'r' : g > 0 ? 'a' : 'g'}">${got}${need == null ? '' : ' / ' + need}${g < 0 ? ` · chybí ${-g}` : g > 0 ? ` · +${g}` : ''}</span>${n12 ? ` <span class="rh12">z toho 12 h: ${n12}</span>` : ''}</th>`; };
     let rows = '';
     order.forEach(g => {
       shown.forEach(sh => (g.by[sh] ||= []).sort((a, b) => (a.row ?? 1e9) - (b.row ?? 1e9) || a.name.localeCompare(b.name, 'cs')));
       const nRows = Math.max(1, ...shown.map(sh => g.by[sh].length));
-      for (let k = 0; k < nRows; k++) rows += `<tr${g.row < -900 && !shown.some(sh => g.by[sh].length) ? ' class="rfree"' : ''}><td class="rpos">${k === 0 ? (line && !tail(g.k) ? `<button class="rposbtn" data-rename="${esc(r.key)}" data-pos="${esc(g.k)}" title="Přejmenovat pozici">${esc(g.k)}</button>` : esc(g.k)) : ''}</td>${shown.map(sh => `<td>${g.by[sh][k] ? personChip(g.by[sh][k], w, r.key, true) : g.row < -900 && k === 0 ? `<button class="rempty" data-slot="${esc(r.key)}" data-shift="${sh}" data-pos="${esc(g.k)}" title="Obsadit">neobsazeno – obsadit</button>` : ''}</td>`).join('')}</tr>`;
+      for (let k = 0; k < nRows; k++) rows += `<tr${g.row < -900 && !shown.some(sh => g.by[sh].length) ? ' class="rfree"' : ''}><td class="rpos">${k === 0 ? (line && !tail(g.k) ? `<button class="rposbtn" data-rename="${esc(r.key)}" data-pos="${esc(g.k)}" title="Přejmenovat pozici">${esc(g.k)}</button>` : esc(g.k)) : ''}</td>${shown.map(sh => { const p = g.by[sh][k]; return p ? `<td>${personChip(p, w, r.key, true)}</td><td class="rlen">${lenBtn(p, w)}</td>` : `<td>${g.row < -900 && k === 0 ? `<button class="rempty" data-slot="${esc(r.key)}" data-shift="${sh}" data-pos="${esc(g.k)}" title="Obsadit">neobsazeno – obsadit</button>` : ''}</td><td class="rlen"></td>`; }).join('')}</tr>`;
     });
-    if (n && shown.some(sh => (n[sh] || 0) > r.shifts[sh].length)) rows += `<tr class="rgap"><td class="rpos">Chybí do potřeby</td>${shown.map(sh => { const m = (n[sh] || 0) - r.shifts[sh].length; return `<td>${m > 0 ? `<span class="rmiss">chybí ${m} ${pl(m, 'člověk', 'lidé', 'lidí')}</span>` : ''}</td>`; }).join('')}</tr>`;
-    if (line) rows += `<tr class="radd"><td></td>${shown.map(sh => `<td><button class="padd" data-add="${esc(r.key)}" data-shift="${sh}">+ přidat člověka</button></td>`).join('')}</tr>`;
-    const table = shown.length ? `<div class="tbl-wrap rtab-wrap"><table class="rtab"><thead><tr><th>Pozice</th>${shown.map(hd).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="note">Na lince zatím nikdo není.</p>';
+    if (n && shown.some(sh => (n[sh] || 0) > r.shifts[sh].length)) rows += `<tr class="rgap"><td class="rpos">Chybí do potřeby</td>${shown.map(sh => { const m = (n[sh] || 0) - r.shifts[sh].length; return `<td colspan="2">${m > 0 ? `<span class="rmiss">chybí ${m} ${pl(m, 'člověk', 'lidé', 'lidí')}</span>` : ''}</td>`; }).join('')}</tr>`;
+    if (line) rows += `<tr class="radd"><td></td>${shown.map(sh => `<td colspan="2"><button class="padd" data-add="${esc(r.key)}" data-shift="${sh}">+ přidat člověka</button></td>`).join('')}</tr>`;
+    const table = shown.length ? `<div class="tbl-wrap rtab-wrap"><table class="rtab"><colgroup><col class="cpos">${shown.map(() => '<col><col class="clen">').join('')}</colgroup><thead><tr><th>Pozice</th>${shown.map(hd).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="note">Na lince zatím nikdo není.</p>';
     return `<div class="card rline ${r.missing ? 'bad' : ''}">
       <div class="rtop"><div><h3>${esc(r.name)}</h3><span class="note">${esc(srcTxt)}</span></div>
+        ${(() => { const all = SHIFTS.flatMap(sh => r.shifts[sh]), t = all.filter(p => h12Of(p, w)).length; return all.length ? `<div class="r12"><b>${t}</b> z ${all.length} na 12 h${t ? ' (' + SHIFTS.filter(sh => r.shifts[sh].some(p => h12Of(p, w))).map(sh => `${sh} ${r.shifts[sh].filter(p => h12Of(p, w)).length}`).join(' · ') + ')' : ''}</div>` : ''; })()}
         <div class="btns">${r.missing ? `<span class="badge r">chybí ${r.missing}</span>` : n ? '<span class="badge g">obsazeno</span>' : ''}${r.surplus && n ? `<span class="badge a">přebytek ${r.surplus}</span>` : ''}
         ${line ? `<button class="btn secondary small" data-need="${esc(r.key)}">Potřeba na směnu</button>` : ''}</div></div>
       ${table}
@@ -1583,6 +1598,8 @@ $('rosterWeeks').addEventListener('click', e => { const b = e.target.closest('[d
 $('rosterBody').addEventListener('click', e => {
   const c = e.target.closest('[data-person]'); if (c){ openPerson(c.dataset.person); return; }
   const a = e.target.closest('[data-add]'); if (a){ openAdd(a.dataset.add, a.dataset.shift); return; }
+  const ln = e.target.closest('[data-len]');
+  if (ln){ (async () => { const w = STATE.planWeek, p = STATE.people[ln.dataset.len]; await ensurePlan(w); const a = STATE.plans[w].assign[p.id] ||= { line: p.home, shift: p.shift }; a.h12 = !h12Of(p, w); await savePlan(w, p.id); renderAll(); })(); return; }
   const rn = e.target.closest('[data-rename]'); if (rn){ openRename(rn.dataset.rename, rn.dataset.pos); return; }
   const sl = e.target.closest('[data-slot]'); if (sl){ openSlot(sl.dataset.slot, sl.dataset.shift, sl.dataset.pos); return; }
   const n = e.target.closest('[data-need]'); if (n) openNeed(n.dataset.need);
