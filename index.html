@@ -280,7 +280,7 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
       </div>
     </div>
     <h2>Linky</h2>
-    <p class="note">Žlutě podbarvené v Plánu = chybí údaj. <b>Norma</b> = dobré kusy za 8h směnu při 100 % OEE. <b>OP standard</b> = operátoři na směnu podle balancingu. <b>Lidé k dispozici</b> = OP za den (Po–Pá) podle rozpisu. <b>Sdílí lidi s</b> = kam lze lidi přesunout (platí oběma směry).</p>
+    <p class="note">Žlutě podbarvené v Plánu = chybí údaj. <b>Cycle time</b> = sekundy na kus na úzkém místě linky; když norma chybí, dopočte se z něj (8h × 3600 / CT, šedě v poli Norma). <b>Norma</b> = dobré kusy za 8h směnu při 100 % OEE. <b>OP standard</b> = operátoři na směnu podle balancingu. <b>Lidé k dispozici</b> = OP za den (Po–Pá) podle rozpisu. <b>Sdílí lidi s</b> = kam lze lidi přesunout (platí oběma směry).</p>
     <div class="tbl-wrap" id="linesTbl"></div>
     <div class="btns" style="margin:.6rem 0 0"><button class="btn secondary small" id="btnAddLine">+ Přidat linku</button></div>
     <h2>Převodník projekt × kategorie → linka</h2>
@@ -314,6 +314,7 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
       <p>Odvolávky (hotové díly) → pravidla převodníku → volume po lince a týdnu → potřebné směny → potřeba OP → porovnání s lidmi k dispozici → doporučení.</p>
       <h3>Výpočet</h3>
       <ul>
+        <li><b>Norma</b> = zadaná, jinak z cycle time: délka směny × 3600 ÷ CT (s/ks), zaokrouhleno dolů.</li>
         <li><b>Výkon za směnu</b> = norma ks/8h × plán OEE (když OEE chybí, použije se výchozí z parametrů).</li>
         <li><b>Potřebné směny (8h ekvivalent)</b> = zaokrouhleno nahoru(volume ÷ výkon za směnu).</li>
         <li><b>Směnový model</b> = nejmenší model, který směny pokryje: 1 / 2 / 3 směny Po–Pá (5 / 10 / 15), 3 směny + sobota (18), 3 směny + celý víkend (21). Nad „max směn/týden“ linky = PŘETÍŽENÍ.</li>
@@ -1098,15 +1099,18 @@ function volumes(exKey){
   return res;
 }
 
+// norma ks/směnu: zadaná, jinak z cycle time (délka směny × 3600 / CT v s/ks) při 100 % OEE
+const normOf = line => line.norm ?? (line.ct > 0 ? Math.floor(M().params.hShift * 3600 / line.ct) : null);
 function calcLine(line, vol, week){
   const P = M().params;
   const r = { line, vol, missing: [], avail: week ? availOf(line, week) : line.avail };
-  if (line.norm == null) r.missing.push('norma');
+  const norm = normOf(line);
+  if (norm == null) r.missing.push('norma');
   if (line.opStd == null) r.missing.push('OP standard');
   if (vol == null){ r.state = 'nodata'; return r; }
   if (r.missing.includes('norma')){ r.state = 'missing'; return r; }
   const oee = line.oee ?? P.oee;
-  r.perShift = line.norm * oee;
+  r.perShift = norm * oee;
   r.shifts = vol > 0 ? Math.ceil(vol / r.perShift) : 0;
   r.maxShifts = line.maxShifts || 15;
   r.load = r.shifts / r.maxShifts;
@@ -1292,10 +1296,11 @@ function renderOutlook(){
 
 function renderMaster(){
   const L = M().lines;
-  $('linesTbl').innerHTML = `<table><thead><tr><th>Linka</th><th class="num">Norma ks/8h</th><th class="num">Plán OEE %</th><th class="num">OP standard/směnu</th><th class="num">Max směn/týden</th><th class="num">Lidé k dispozici/den</th><th>Sdílí lidi s</th><th>Poznámka</th><th></th></tr></thead><tbody>
+  $('linesTbl').innerHTML = `<table><thead><tr><th>Linka</th><th class="num">Cycle time s/ks</th><th class="num">Norma ks/8h</th><th class="num">Plán OEE %</th><th class="num">OP standard/směnu</th><th class="num">Max směn/týden</th><th class="num">Lidé k dispozici/den</th><th>Sdílí lidi s</th><th>Poznámka</th><th></th></tr></thead><tbody>
     ${L.map((l, i) => `<tr data-li="${i}">
       <td><input class="cell" data-f="name" value="${esc(l.name)}" style="min-width:150px"></td>
-      <td><input class="cell n" data-f="norm" type="number" min="0" value="${l.norm ?? ''}"></td>
+      <td><input class="cell n" data-f="ct" type="number" min="0" step="0.1" value="${l.ct ?? ''}"></td>
+      <td><input class="cell n" data-f="norm" type="number" min="0" value="${l.norm ?? ''}" placeholder="${l.norm == null && normOf(l) != null ? normOf(l) : ''}" title="${l.norm == null && normOf(l) != null ? 'Dopočteno z cycle time – zadáním čísla ho přepíšeš' : ''}"></td>
       <td><input class="cell n" data-f="oee" type="number" min="1" max="100" value="${l.oee == null ? '' : Math.round(l.oee*100)}" placeholder="${Math.round(M().params.oee*100)}"></td>
       <td><input class="cell n" data-f="opStd" type="number" min="0" value="${l.opStd ?? ''}"></td>
       <td><input class="cell n" data-f="maxShifts" type="number" min="1" max="21" value="${l.maxShifts ?? 15}"></td>
@@ -1444,7 +1449,7 @@ function renderHome(){
   } else h += tile({ title: 'Skill matrix', value: '–', label: 'kdo může na kterou linku', go: 'import', tone: 'green', desc: 'Skládá se z rozpisů směn – naimportuj je.', cta: 'Nahrát rozpisy →' });
 
   // 8 – kmenová data
-  const withNorm = L.filter(l => l.norm != null).length, withOp = L.filter(l => l.opStd != null).length, unm = V ? Object.keys(V.unmapped).length : 0;
+  const withNorm = L.filter(l => normOf(l) != null).length, withOp = L.filter(l => l.opStd != null).length, unm = V ? Object.keys(V.unmapped).length : 0;
   h += tile({ title: 'Kmenová data', value: `${withNorm}/${L.length}`, unit: 'linek s normou', label: 'normy, OP standard, převodník projekt → linka', go: 'master',
     tone: withNorm < L.length ? 'red' : 'green', badge: withNorm < L.length ? 'chybí normy' : 'kompletní', badgeTone: withNorm < L.length ? 'r' : 'g',
     viz: miniBars([{ n: 'norma', v: withNorm, c: 'var(--navy-2)' }, { n: 'OP standard', v: withOp, c: 'var(--navy-2)' }, { n: 'lidé k disp.', v: L.filter(l => (w ? availOf(l, w) : l.avail) != null).length, c: 'var(--navy-2)' }], ` / ${L.length}`),
@@ -1533,7 +1538,7 @@ $('linesTbl').addEventListener('change', e => {
   else if (f === 'oee') l.oee = v === '' ? null : num(v) / 100;
   else l[f] = v === '' ? null : num(v);
   if (f === 'avail') delete l.availSrc;
-  if (f === 'name') renderMaster();
+  if (f === 'name' || f === 'ct') renderMaster();
   save(); renderCalc();
 });
 $('linesTbl').addEventListener('click', e => {
