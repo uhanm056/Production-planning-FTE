@@ -13,15 +13,16 @@
   --bg:#F3F5F8; --surface:#FFFFFF; --text:#1f2933; --muted:#6b7684; --line:#e3e8ed; --th:#eef2f6; --th-text:#41525f;
   --good:#1E9E4A; --warn:#E89818; --crit:#E03C31; --info:#0A5FB4; --warn-text:#a96b00;
   --good-soft:#eaf7ee; --warn-soft:#fdf4e3; --crit-soft:#fdecea;
+  --h12:#E07B00; --h12-text:#B35F00; --h12-soft:#FFF1DF;
   --shadow:0 1px 3px rgba(16,32,48,.08);
   --f-head:"Inter","DM Sans","Segoe UI",Roboto,Arial,sans-serif;
   --f-text:"Inter","DM Sans","Segoe UI",Roboto,Arial,sans-serif;
   --f-mono:"Inter","Segoe UI",Roboto,Arial,sans-serif;
 }
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){--bg:#0E141C;--surface:#161E29;--text:#E6ECF2;--muted:#93A1B1;--line:#263241;--th:#1C2734;--th-text:#B4C2D0;--navy-soft:#122A47;--good-soft:#123326;--warn-soft:#3A2D10;--crit-soft:#3D1A19;--warn-text:#F0B95A;--accent:#9CC3EE}
+  :root:not([data-theme="light"]){--bg:#0E141C;--surface:#161E29;--text:#E6ECF2;--muted:#93A1B1;--line:#263241;--th:#1C2734;--th-text:#B4C2D0;--navy-soft:#122A47;--good-soft:#123326;--warn-soft:#3A2D10;--crit-soft:#3D1A19;--warn-text:#F0B95A;--accent:#9CC3EE;--h12:#F29A2E;--h12-text:#F7B460;--h12-soft:#3A2810}
 }
-:root[data-theme="dark"]{--bg:#0E141C;--surface:#161E29;--text:#E6ECF2;--muted:#93A1B1;--line:#263241;--th:#1C2734;--th-text:#B4C2D0;--navy-soft:#122A47;--good-soft:#123326;--warn-soft:#3A2D10;--crit-soft:#3D1A19;--warn-text:#F0B95A;--accent:#9CC3EE}
+:root[data-theme="dark"]{--bg:#0E141C;--surface:#161E29;--text:#E6ECF2;--muted:#93A1B1;--line:#263241;--th:#1C2734;--th-text:#B4C2D0;--navy-soft:#122A47;--good-soft:#123326;--warn-soft:#3A2D10;--crit-soft:#3D1A19;--warn-text:#F0B95A;--accent:#9CC3EE;--h12:#F29A2E;--h12-text:#F7B460;--h12-soft:#3A2810}
 
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -184,15 +185,16 @@ details.lendbox summary .muted{font-style:italic}
 .rtab tbody tr:hover{background:transparent} .rtab .pchip{min-height:28px;padding:2px 6px}
 .rtab tr.rgap td{background:var(--crit-soft)} .rtab col.cpos{width:170px} .rtab col.clen{width:58px} .rtab td.rlen{padding-left:0}
 .lenbtn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:2px 8px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
-.lenbtn.on{background:var(--navy-soft);border-color:var(--info);color:var(--info)} .lenbtn:hover{border-color:var(--info)}
+.lenbtn.on{background:var(--h12-soft);border-color:var(--h12);color:var(--h12-text)} .lenbtn:hover{border-color:var(--h12)}
 .r12{display:flex;flex-direction:column;align-items:flex-start;gap:2px;align-self:center}
-.b12{display:inline-block;background:var(--info);color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;white-space:nowrap}
+.b12{display:inline-block;background:var(--h12);color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;white-space:nowrap}
 .b12.big{font-size:13.5px;padding:4px 12px}
 .r12sum summary{display:flex;align-items:center;gap:14px;list-style:none} .r12sum summary::-webkit-details-marker{display:none}
-.r12big{font-size:40px;font-weight:800;color:var(--info);line-height:1;font-variant-numeric:tabular-nums}
-.p12{display:inline-block;vertical-align:middle;width:110px;height:10px;background:var(--th);border-radius:5px;overflow:hidden;margin-right:8px} .p12 i{display:block;height:100%;background:var(--info)}
+.r12big{font-size:40px;font-weight:800;color:var(--h12-text);line-height:1;font-variant-numeric:tabular-nums}
+.p12{display:inline-block;vertical-align:middle;width:110px;height:10px;background:var(--th);border-radius:5px;overflow:hidden;margin-right:8px} .p12 i{display:block;height:100%;background:var(--h12)}
 .p12v{font-variant-numeric:tabular-nums}
-.r12sum{margin-bottom:12px;border-top-color:var(--info);border-top-width:4px} .r12sum summary{cursor:pointer} .r12sum tr.tot td{border-top:2px solid var(--navy)}
+.r12sum{margin-bottom:12px;border-top-color:var(--h12);border-top-width:4px;background:linear-gradient(90deg,var(--h12-soft),var(--surface) 45%)} .r12sum summary{cursor:pointer} .r12sum tr.tot td{border-top:2px solid var(--navy)}
+.card.kpi.k12{border-top-color:var(--h12)} .card.kpi.k12 .val{color:var(--h12-text)}
 .rh12{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0}
 .rposbtn{all:unset;cursor:pointer;font-weight:600;border-bottom:1px dashed var(--line)} .rposbtn:hover,.rposbtn:focus-visible{color:var(--info);border-bottom-color:var(--info)}
 .rempty{color:var(--muted);font-size:12px;font-style:italic;border:1px dashed var(--line);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;width:100%;text-align:left;font-family:inherit} .rempty:hover{border-color:var(--info);color:var(--info)} .rtab tr.rfree td.rpos{color:var(--warn-text)} .rmiss{color:var(--crit);font-size:12px;font-weight:600}
@@ -970,7 +972,7 @@ function personChip(p, week, lineKey, inTable){
     <span class="sk ${lvl || 'x'}">${lvl || '·'}</span><span class="pn">${esc(p.name)}</span>
     ${p.pos && !inTable ? `<span class="pp">${esc(p.pos)}</span>` : ''}
     ${a.moved ? `<span class="badge b">z ${esc(colName(a.from))}${a.fromShift && a.fromShift !== a.shift ? ' ' + a.fromShift : ''}</span>` : ''}
-    ${a.locked ? '<span class="badge a">ručně</span>' : ''}${h12Of(p, week) && !inTable ? '<span class="badge b">12h</span>' : ''}
+    ${a.locked ? '<span class="badge a">ručně</span>' : ''}${h12Of(p, week) && !inTable ? '<span class="b12">12 h</span>' : ''}
     ${ab.length && !isAbsent(p, week) ? `<span class="badge a">částečně chybí</span>` : ''}</button>`;
 }
 function renderRoster(){
@@ -992,7 +994,7 @@ function renderRoster(){
       <div class="card kpi"><div class="lbl">Přesuny</div><div class="val">${fmt(moved)}</div><div class="sub">jen lidé se Z/P na cílové lince</div></div>
       <div class="card kpi ${missing ? 'alert' : 'ok'}"><div class="lbl">Chybí OP</div><div class="val">${fmt(missing)}</div><div class="sub">neobsazená místa na směnách</div></div>
       <div class="card kpi"><div class="lbl">Přebytek OP</div><div class="val">${fmt(surplus)}</div><div class="sub">nad potřebu linek</div></div>
-      <div class="card kpi"><div class="lbl">Na 12 h</div><div class="val">${fmt(on12)}</div><div class="sub">z ${fmt(present)} lidí (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)}</div></div>
+      <div class="card kpi k12"><div class="lbl">Na 12 h</div><div class="val">${fmt(on12)}</div><div class="sub">z ${fmt(present)} lidí (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)}</div></div>
     </div>
     <details class="card r12sum" open><summary><span class="r12big">${fmt(on12)}</span><span><b>lidí na 12 h za výrobu</b><br><span class="note">z ${fmt(present)} v rozpisu (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)} · rozpis po procesech níže</span></span></summary>
       <div class="tbl-wrap" style="box-shadow:none;margin-top:8px"><table><thead><tr><th>Proces</th><th class="num">Lidé</th><th class="num">12 h</th><th class="num">8 h</th><th>Podíl 12 h</th><th class="num">R 12 h</th><th class="num">O 12 h</th><th class="num">N 12 h</th></tr></thead><tbody>
