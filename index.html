@@ -327,6 +327,12 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
     </div>
     <h2>Uložené exporty</h2>
     <div id="importHistory"></div>
+    <div class="head" style="margin-top:2rem"><div><h1>Import routingu / DLE</h1><p>Soubor DLE (např. <code>DLE-Oct26_CW42.xlsx</code>): list <b>Structuredata</b> = hodiny přímé práce na kus po dílech, <b>transactions</b> = skutečná odvedení (poměr polotovarů), poslední list <b>CWxx</b> = efektivita a lidé po procesech. Stačí nahrát při změně routingu nebo jednou za čas.</p></div></div>
+    <div class="card">
+      <div class="drop" id="dropDle">Přetáhni sem soubor DLE (.xlsx) nebo <label>vyber soubor<input type="file" id="dleInput" accept=".xlsx,.xlsm,.xls" hidden></label></div>
+      <div id="dlePreview"></div>
+      <p class="note" id="dleInfo"></p>
+    </div>
     <div class="head" style="margin-top:2rem"><div><h1>Import rozpisů směn</h1><p>Týdenní rozpisy po linkách (šablona <code>CW_xx_&lt;linka&gt;.xlsx</code>, list <b>CWxx</b>). Lze vybrat všechny soubory najednou.</p></div></div>
     <div class="card">
       <div class="drop" id="dropRoster">Přetáhni sem rozpisy směn (.xlsx) nebo <label>vyber soubory<input type="file" id="rosterInput" accept=".xlsx,.xls" multiple hidden></label></div>
@@ -351,6 +357,13 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
         <li><b>Bilance OP</b> = lidé k dispozici − potřeba OP/den. Kladná = přebytek, záporná = chybí.</li>
         <li><b>FTE DL</b> = směny × OP standard × 8 h ÷ (h na FTE × (1 − absence)).</li>
         <li><b>Δ proti minulému exportu</b> = volume linky v plánovaném týdnu v tomto vs. předchozím exportu. Nad +5 % ROSTE (červená, víc lidí), pod −5 % KLESÁ (zelená), jinak STABILNÍ.</li>
+      </ul>
+      <h3>Potřeba lidí podle routingu (DLE)</h3>
+      <ul>
+        <li><b>Std hodiny procesu</b> = Σ (odvolávka dílu v týdnu × hodiny přímé práce na kus z routingu, list Structuredata) + polotovary.</li>
+        <li><b>Polotovary</b> (foaming, prefix, IMM, skiny…) v odvolávkách nejsou: hodiny = odvolávky hotových výrobků projektu × (hodiny polotovarů ÷ odvedené hotové výrobky projektu v týdnech z listu transactions). U projektů pod 300 ks/týden průměrné týdenní hodiny. Ověřeno: CW40–41 → CW42 celkem 11 234 h vs. skutečnost 11 011 h.</li>
+        <li><b>Potřeba lidí</b> = std hodiny ÷ hodin na FTE (37,5) ÷ efektivita DLE. Efektivita = skutečnost posledního týdne (std ÷ docházka) po procesech, nebo cílová z parametrů.</li>
+        <li><b>Lidé v rozpisu</b> = přítomní operátoři v Rozpisu týdne na linkách procesu (Assembly = OV51/64, SK336/W206, MBEAM, W177/W247 IP…; G463 Prefix = rozpis Prefix).</li>
       </ul>
       <h3>Doporučení – pravidla</h3>
       <ol>
@@ -459,7 +472,7 @@ function rag(cur, prev){
 }
 
 /* ===== 4. Stav ===== */
-let STATE = { exports: {}, master: DEFAULT_MASTER(), people: {}, plans: {}, rosterMeta: null, ...(LS.get(APP_KEY) || {}) };
+let STATE = { exports: {}, master: DEFAULT_MASTER(), people: {}, plans: {}, rosterMeta: null, dle: null, ...(LS.get(APP_KEY) || {}) };
 if (!STATE.master) STATE.master = DEFAULT_MASTER();
 STATE.people ||= {}; STATE.plans ||= {};
 STATE.planWeek = LS.get(APP_KEY + '.week') || STATE.planWeek || null;
@@ -470,7 +483,7 @@ const latestKey = () => Object.keys(STATE.exports).sort().at(-1) || null;
 const prevKey = () => Object.keys(STATE.exports).sort().at(-2) || null;
 
 // zápisy: lokálně celý stav, ve sdílené db jen změněný dokument
-const persistLocal = () => DB ? true : LS.set(APP_KEY, { exports: STATE.exports, master: STATE.master, people: STATE.people, plans: STATE.plans, rosterMeta: STATE.rosterMeta });
+const persistLocal = () => DB ? true : LS.set(APP_KEY, { exports: STATE.exports, master: STATE.master, people: STATE.people, plans: STATE.plans, rosterMeta: STATE.rosterMeta, dle: STATE.dle });
 async function dbWrite(fn){
   try{ await fn(); return true; }
   catch(e){
@@ -495,6 +508,7 @@ async function savePeople(ids){
   for (const id of ids) ok = (await dbWrite(() => STATE.people[id] ? DB.doc('people/' + id).set(STATE.people[id]) : DB.doc('people/' + id).delete())) && ok;
   return ok;
 }
+const saveDle = () => DB ? dbWrite(() => DB.doc('app/dle').set(STATE.dle)) : persistLocal();
 const saveRosterMeta = () => DB ? dbWrite(() => DB.doc('app/roster').set(STATE.rosterMeta)) : persistLocal();
 // celý rozpis týdne (po sestavení) nebo jen změna jednoho člověka (merge, ať si TL nepřepisují práci)
 function savePlan(week, personId){
@@ -518,11 +532,12 @@ async function connectDb(){
   if (!window.claude?.use) return;
   const db = await window.claude.use('db').catch(() => null); if (!db) return;
   DB = db;
-  STATE = { ...STATE, exports: {}, people: {}, plans: {}, rosterMeta: null, master: DEFAULT_MASTER() };
+  STATE = { ...STATE, exports: {}, people: {}, plans: {}, rosterMeta: null, dle: null, master: DEFAULT_MASTER() };
   $('hdrSync').textContent = 'sdíleno · stejná data pro všechny';
   const err = e => { console.warn('db snapshot', e); if (e?.code === 'revoked' || e?.code === 'not_granted') $('hdrSync').textContent = 'jen čtení'; };
   db.doc('app/master').onSnapshot(s => { const js = JSON.stringify(s.data() ?? null); if (js === lastMasterJSON) return; lastMasterJSON = js; STATE.master = s.exists ? clone(s.data()) : DEFAULT_MASTER(); scheduleRender(); }, err);
   db.doc('app/roster').onSnapshot(s => { STATE.rosterMeta = s.exists ? clone(s.data()) : null; scheduleRender(); }, err);
+  db.doc('app/dle').onSnapshot(s => { STATE.dle = s.exists ? s.data() : null; scheduleRender(); }, err);
   db.collection('exports').onSnapshot(q => { STATE.exports = Object.fromEntries(q.docs.map(d => [d.id, d.data()])); fixPlanWeek(); scheduleRender(); }, err);
   db.collection('people').onSnapshot(q => { STATE.people = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
   db.collection('plans').onSnapshot(q => { STATE.plans = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
@@ -1181,6 +1196,167 @@ async function onDialogClick(e){
   }
 }
 
+/* ----- Routing / DLE: hodiny přímé práce na kus (Structuredata) a skutečnost (transactions, CWxx) ----- */
+// procesy DLE → linky a rozpisy v aplikaci (Prefix je v rozpisu skupina bez linky)
+const DLE_LINES = { 'assembly': ['ov5164', 'sk336', 'mbeam', 'w177ip', 'w177dp', 'po455'], 'foaming': ['foamk1', 'foamk2'], 'g463 assy': ['g463asy'],
+  'gbdp': ['gbdp'], 'imm': ['imm'], 'slush+ sewing': ['slush'], 'g463 prefix': ['g463l1', 'g463l2', 'g:prefix'] };
+const dleKey = g => norm(g).replace(/\s*\+\s*/g, '+ ').trim();
+const dleLines = g => DLE_LINES[dleKey(g)] || [];
+const DLE_MIN_Q = 300;   // polotovary: poměr na kus hotového výrobku jen u projektů s aspoň 300 ks/týden, jinak průměrné hodiny
+const excelDate = v => typeof v === 'number' ? new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000) : v instanceof Date ? v : null;
+const isoWeekKey = d => { const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day); const y = t.getUTCFullYear(); return `${y}-${String(Math.ceil(((t - Date.UTC(y, 0, 1)) / 86400000 + 1) / 7)).padStart(2, '0')}`; };
+
+async function parseDle(file){
+  const XLSX = await getXLSX(), buf = await file.arrayBuffer();
+  const names = XLSX.read(buf, { type: 'array', bookSheets: true }).SheetNames;
+  const sdName = names.find(n => norm(n) === 'structuredata'), trName = names.find(n => norm(n) === 'transactions');
+  const cwName = names.filter(n => /^cw\s*\d{1,2}$/i.test(n.trim())).sort((a, b) => +b.replace(/\D/g, '') - +a.replace(/\D/g, ''))[0];
+  if (!sdName) throw new Error(`Soubor nemá list „Structuredata“ (routing po dílech). Listy: ${names.join(', ')}`);
+  const lk = latestKey(); if (!lk) throw new Error('Nejdřív nahraj přehled odvolávek – podle něj se pozná, co jsou hotové výrobky a co polotovary.');
+  const wb = XLSX.read(buf, { type: 'array', sheets: [sdName, trName, cwName].filter(Boolean), dense: true });
+  const rowsOf = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' });
+  const col = (hdr, ...keys) => hdr.findIndex(h => keys.some(k => norm(h).includes(k)));
+  // Structuredata: díl → [hodiny/ks, proces]
+  const sd = rowsOf(sdName), h0 = sd.findIndex(r => r.some(v => norm(v) === 'item number'));
+  if (h0 < 0) throw new Error('V listu Structuredata chybí hlavička „Item Number“.');
+  const H = sd[h0], cI = col(H, 'item number'), cH = col(H, 'suma routing'), cG = col(H, 'dlegroup.desc', 'dle desc');
+  if (cH < 0 || cG < 0) throw new Error('V listu Structuredata chybí sloupce „Suma routing“ nebo „DLEgroup.Desc“.');
+  const groups = [], items = {};
+  sd.slice(h0 + 1).forEach(r => {
+    const it = String(r[cI] ?? '').trim(), h = num(r[cH]), g = String(r[cG] ?? '').trim();
+    if (!it || !h || !g) return;
+    let gi = groups.findIndex(x => dleKey(x) === dleKey(g)); if (gi < 0){ groups.push(g); gi = groups.length - 1; }
+    items[it] = [+h.toFixed(6), gi];
+  });
+  // transactions: polotovary = díly, které nejsou v odvolávkách → hodiny na kus hotového výrobku projektu
+  const fg = new Set(STATE.exports[lk].parts.map(p => String(p[4]).trim()));
+  const ratio = {}, fgQ = {}, weeks = new Set(), byWeek = {};
+  if (trName){
+    const tr = rowsOf(trName), t0 = tr.findIndex(r => r.some(v => norm(v) === 'item number'));
+    const T = tr[t0], ti = col(T, 'item number'), td = col(T, 'effective date'), tq = col(T, 'loc qty change'), tp = T.findIndex(h => norm(h) === 'group'), tg = col(T, 'dle desc'), th = T.findIndex(h => norm(h) === 'dl time/qty');
+    tr.slice(t0 + 1).forEach(r => {
+      const it = String(r[ti] ?? '').trim(), d = excelDate(r[td]); if (!it || !d) return;
+      const wk = isoWeekKey(d), q = num(r[tq]) || 0, h = num(r[th]) || 0, proj = String(r[tp] ?? '').trim(), g = String(r[tg] ?? '').trim();
+      weeks.add(wk); const bw = byWeek[wk] ||= {}; const gk = g || '–';
+      if (fg.has(it)){ fgQ[proj] = (fgQ[proj] || 0) + q; (bw[gk] ||= { fg: 0, sub: 0 }).fg += h; }
+      else if (h){ const r0 = (ratio[proj] ||= {})[g] ||= { h: 0 }; r0.h += h; (bw[gk] ||= { fg: 0, sub: 0 }).sub += h; }
+    });
+  }
+  const nW = Math.max(1, weeks.size);
+  Object.entries(ratio).forEach(([p, byG]) => Object.values(byG).forEach(r => { r.q = Math.max(0, fgQ[p] || 0); r.n = nW; r.h = +r.h.toFixed(2); }));
+  // poslední týdenní list CWxx: standardní hodiny, docházka, lidé
+  let actual = null;
+  if (cwName){
+    const cw = rowsOf(cwName), a0 = cw.findIndex(r => r.some(v => norm(v) === 'attendance hours'));
+    if (a0 >= 0){
+      const A = cw[a0], cS = col(A, 'dl time/qty'), cA = A.findIndex(v => norm(v) === 'attendance hours'), cR = col(A, 'real pocet dir');
+      const gs = {};
+      for (const r of cw.slice(a0 + 1)){
+        const g = String(r[0] ?? '').trim(); if (!g || /celkov/i.test(g)) break;
+        const std = num(r[cS]), att = num(r[cA]); if (std == null || !att) continue;
+        gs[g] = { std: +std.toFixed(1), att: +att.toFixed(1), dir: num(r[cR]) };
+      }
+      actual = { sheet: cwName, week: isoWeekKey(new Date()).slice(0, 5) + String(+cwName.replace(/\D/g, '')).padStart(2, '0'), groups: gs };
+    }
+  }
+  return { file: file.name, importedAt: new Date().toISOString(), groups, items, ratio, weeks: [...weeks].sort(), byWeek, actual, fgExport: lk };
+}
+
+// potřeba lidí po procesech pro týden: hotové díly × routing + polotovary podle poměru z transakcí
+function dleNeed(week){
+  const D = STATE.dle, lk = latestKey(); if (!D || !lk) return null;
+  const ex = STATE.exports[lk], wi = ex.weeks.indexOf(week); if (wi < 0) return null;
+  const P = M().params, rows = {}, projQty = {};
+  const row = g => rows[dleKey(g)] ||= { g, fgQty: 0, hFG: 0, hSub: 0 };
+  D.groups.forEach(row);
+  let missQty = 0, missParts = 0;
+  ex.parts.forEach(p => {
+    const q = p[3][wi]; if (!q) return;
+    projQty[p[0]] = (projQty[p[0]] || 0) + q;
+    const it = D.items[String(p[4]).trim()]; if (!it){ missQty += q; missParts++; return; }
+    const r = row(D.groups[it[1]]); r.fgQty += q; r.hFG += q * it[0];
+  });
+  Object.entries(D.ratio).forEach(([proj, byG]) => Object.entries(byG).forEach(([g, r]) => {
+    if (!g) return; row(g).hSub += r.q >= DLE_MIN_Q * r.n ? r.h / r.q * (projQty[proj] || 0) : r.h / r.n;
+  }));
+  const out = Object.values(rows).map(r => {
+    const act = D.actual ? Object.entries(D.actual.groups).find(([k]) => dleKey(k) === dleKey(r.g))?.[1] : null;
+    const eff = P.dleEff ?? (act ? act.std / act.att : null) ?? 1;
+    const h = r.hFG + r.hSub, need = h / (P.hFte * eff);
+    const keys = dleLines(r.g);
+    const people = keys.length && hasPeople() ? operators().filter(p => !isAbsent(p, week) && keys.some(k => k.startsWith('g:') ? norm(slotOf(p, week).line).startsWith(norm(k)) : slotOf(p, week).line === k)).length : null;
+    return { ...r, h, eff, effSrc: P.dleEff != null ? 'cíl' : act ? D.actual.sheet : '100 %', need, people, gap: people == null ? null : people - need, act, lines: keys };
+  }).filter(r => (r.h > 0.5 || r.people) && !/^[0\s–-]*$/.test(r.g));
+  return { rows: out, missQty, missParts };
+}
+
+function renderDleCard(week){
+  const N = dleNeed(week); if (!N) return '';
+  const D = STATE.dle, T = k => N.rows.reduce((s, r) => s + (r[k] || 0), 0);
+  const ppl = N.rows.some(r => r.people != null);
+  return `<div class="card dlecard"><div class="rtop"><div><h3>Potřeba lidí podle routingu (DLE) – ${wkLabel(week)}</h3>
+    <span class="note">Hotové díly z odvolávek × hodiny z routingu + polotovary podle poměru z ${D.weeks.map(wkShort).join(', ')}. Lidé = hodiny ÷ ${fmt(M().params.hFte, 1)} h ÷ efektivita (${M().params.dleEff != null ? 'cíl ' + fmt(M().params.dleEff * 100) + ' %' : 'skutečnost ' + esc(D.actual?.sheet || '–')}).</span></div>
+    <button class="btn secondary small" onclick="go('meth')">Nastavit efektivitu</button></div>
+    ${N.missParts ? `<div class="warnbox">${N.missParts} ${pl(N.missParts, 'díl', 'díly', 'dílů')} z odvolávek (${fmt(N.missQty)} ks) nemá v routingu čas – v hodinách chybí.</div>` : ''}
+    <div class="tbl-wrap" style="box-shadow:none"><table><thead><tr><th>Proces</th><th class="num">Hotové díly ks</th><th class="num">Hodiny hotové</th><th class="num">Hodiny polotovary</th><th class="num">Std hodiny celkem</th><th class="num">Efektivita</th><th class="num">Potřeba lidí</th><th class="num">Lidé v rozpisu</th><th class="num">Bilance</th>${D.actual ? `<th class="num">Skutečnost ${esc(D.actual.sheet)} lidí</th>` : ''}</tr></thead><tbody>
+    ${N.rows.sort((a, b) => b.h - a.h).map(r => `<tr><td><b>${esc(r.g)}</b><div class="note">${r.lines.map(colName).map(esc).join(', ') || '–'}</div></td>
+      <td class="num">${fmt(r.fgQty)}</td><td class="num">${fmt(r.hFG)}</td><td class="num">${fmt(r.hSub)}</td><td class="num"><b>${fmt(r.h)}</b></td><td class="num">${fmt(r.eff * 100)} %</td>
+      <td class="num"><b>${fmt(r.need, 1)}</b></td><td class="num">${r.people ?? '–'}</td><td class="num ${r.gap < -0.5 ? 'neg' : r.gap > 0.5 ? 'pos' : ''}">${r.gap == null ? '–' : sgn(r.gap, 1)}</td>
+      ${D.actual ? `<td class="num">${r.act?.dir != null ? fmt(r.act.dir, 1) : '–'}</td>` : ''}</tr>`).join('')}
+    <tr class="tot"><td><b>Celkem</b></td><td class="num">${fmt(T('fgQty'))}</td><td class="num">${fmt(T('hFG'))}</td><td class="num">${fmt(T('hSub'))}</td><td class="num"><b>${fmt(T('h'))}</b></td><td></td><td class="num"><b>${fmt(T('need'), 1)}</b></td><td class="num">${ppl ? fmt(T('people')) : '–'}</td><td class="num ${T('gap') < 0 ? 'neg' : 'pos'}">${ppl ? sgn(T('gap'), 1) : '–'}</td>${D.actual ? `<td class="num">${fmt(Object.values(D.actual.groups).reduce((s, g) => s + (g.dir || 0), 0), 1)}</td>` : ''}</tr>
+    </tbody></table></div></div>`;
+}
+
+// doporučení po procesech (když je routing): přesuny přebytek → deficit, jinak dočasný / trvalý deficit a přebytek
+function dleRecos(week){
+  const N = dleNeed(week); if (!N) return [];
+  const lk = latestKey(), ws = STATE.exports[lk].weeks, i0 = ws.indexOf(week), next = ws.slice(i0 + 1, i0 + 5);
+  const fut = next.map(w => dleNeed(w));
+  const recos = [], bal = {};
+  N.rows.filter(r => r.gap != null).forEach(r => bal[r.g] = Math.round(r.gap));
+  const defs = Object.entries(bal).filter(([, g]) => g < 0).sort((a, b) => a[1] - b[1]).map(([g]) => g);
+  defs.forEach(dg => {
+    Object.entries(bal).filter(([g, v]) => v > 0 && g !== dg).sort((a, b) => b[1] - a[1]).forEach(([sg]) => {
+      if (bal[dg] >= 0 || bal[sg] <= 0) return;
+      const from = dleLines(sg).filter(k => !k.startsWith('g:')), to = dleLines(dg).filter(k => !k.startsWith('g:'));
+      const names = [...new Set(from.flatMap(f => to.flatMap(t => qualifiedMovers(f, t))))];
+      if (!names.length) return;
+      const n = Math.min(bal[sg], -bal[dg], names.length); bal[sg] -= n; bal[dg] += n;
+      recos.push({ cls: 'move', icon: '⇄', t: `Přesunout ${n} ${pl(n, 'člověka', 'lidi', 'lidí')}: ${sg} → ${dg}`, d: `Podle routingu má ${sg} přebytek a ${dg} deficit. Kvalifikovaní (Z/P): ${names.slice(0, 6).join(', ')}${names.length > 6 ? ` a dalších ${names.length - 6}` : ''}. Přesun zadej v Rozpisu týdne.` });
+    });
+  });
+  Object.entries(bal).forEach(([g, v]) => {
+    if (Math.abs(v) < 1) return;
+    const fg = fut.map(F => F?.rows.find(r => r.g === g)?.gap).filter(x => x != null);
+    const same = fg.filter(x => v < 0 ? x < -0.5 : x > 0.5).length, persistent = fg.length >= 3 && same >= 3;
+    recos.push(v < 0
+      ? (persistent ? { cls: 'crit', icon: '+', t: `${g}: trvale chybí ${-v} ${pl(-v, 'člověk', 'lidé', 'lidí')}`, d: `Podle routingu deficit i v ${same} ze ${fg.length} dalších týdnů (${fg.map(x => sgn(x, 0)).join(' / ')}). Agentura nebo nábor.` }
+                    : { cls: 'warn', icon: '⏱', t: `${g}: chybí ${-v} ${pl(-v, 'člověk', 'lidé', 'lidí')} (dočasně)`, d: `Přesčas, 12h směny nebo víkend. Další týdny: ${fg.map(x => sgn(x, 0)).join(' / ') || '–'}.` })
+      : (persistent ? { cls: 'good', icon: '−', t: `${g}: trvalý přebytek ${v} ${pl(v, 'člověk', 'lidé', 'lidí')}`, d: `Přebytek i v ${same} ze ${fg.length} dalších týdnů. Snížit agenturu, zastavit nábor, trvalý přesun.` }
+                    : { cls: 'neutral', icon: '◇', t: `${g}: volno ${v} ${pl(v, 'člověk', 'lidé', 'lidí')}`, d: `Dočasně: dovolené, školení, přesun na deficitní proces, rework, 5S. Další týdny: ${fg.map(x => sgn(x, 0)).join(' / ') || '–'}.` }));
+  });
+  return recos;
+}
+
+let PENDING_DLE = null;
+async function handleDleFile(f){
+  const box = $('dlePreview'); if (!f) return;
+  box.innerHTML = '<p class="muted">Načítám routing a transakce… velký soubor, může to trvat 10–30 s.</p>';
+  try{
+    const D = await parseDle(f); PENDING_DLE = D;
+    const cnt = D.groups.map((g, i) => `${esc(g)} ${Object.values(D.items).filter(x => x[1] === i).length}`).join(' · ');
+    const w = STATE.planWeek, keep = STATE.dle; STATE.dle = D; const N = dleNeed(w); STATE.dle = keep;
+    box.innerHTML = `<h2>Náhled routingu</h2>
+      <div class="grid-kpi"><div class="card kpi"><div class="lbl">Díly s routingem</div><div class="val">${fmt(Object.keys(D.items).length)}</div><div class="sub">${cnt}</div></div>
+      <div class="card kpi"><div class="lbl">Transakce</div><div class="val">${D.weeks.length ? D.weeks.map(wkShort).join(', ') : '–'}</div><div class="sub">poměr polotovarů na kus hotového výrobku</div></div>
+      <div class="card kpi"><div class="lbl">Skutečnost</div><div class="val">${esc(D.actual?.sheet || '–')}</div><div class="sub">std hodiny, docházka, lidé po procesech</div></div>
+      ${N ? `<div class="card kpi"><div class="lbl">Potřeba ${wkShort(w)}</div><div class="val">${fmt(N.rows.reduce((s, r) => s + r.need, 0), 1)}</div><div class="sub">lidí podle routingu</div></div>` : ''}</div>
+      <div class="btns"><button class="btn" id="btnSaveDle">Uložit routing</button><button class="btn secondary" id="btnCancelDle">Zrušit</button></div>`;
+    $('btnSaveDle').onclick = async () => { STATE.dle = PENDING_DLE; PENDING_DLE = null; box.innerHTML = '<p class="muted">Ukládám…</p>'; if (await saveDle()) toast('Routing uložen – potřeba lidí po procesech je v Plánu týdne.'); box.innerHTML = ''; renderAll(); go('plan'); };
+    $('btnCancelDle').onclick = () => { PENDING_DLE = null; box.innerHTML = ''; };
+  }catch(err){ console.warn(err); box.innerHTML = `<div class="warnbox"><b>${esc(f.name)}:</b> ${esc(err.message)}</div>`; }
+}
+
 /* ===== 6. Výpočty ===== */
 function ruleMatch(rule, part){
   if (norm(rule.p) !== norm(part[0]) || norm(rule.k) !== norm(part[1])) return false;
@@ -1294,12 +1470,12 @@ function recommend(exKey, week){
   });
   // weekend
   plan.filter(c => c.wkndShifts > 0 && !c.overload).forEach(c => recos.push({ cls: 'warn', icon: 'V', t: `${c.line.name}: ${c.wkndShifts} víkendové směny`, d: `Model ${c.model?.label}. Zařadit do víkendového rozpisu a schválit.` }));
-  // chybějící data
+  // chybějící data (s routingem se potřeba počítá po procesech – normy linek nejsou nutné)
   const miss = plan.filter(c => c.state === 'missing' && c.vol > 0).map(c => `${c.line.name} (${c.missing.join(', ')})`);
-  if (miss.length) recos.push({ cls: 'neutral', icon: '?', t: `Bez výpočtu – chybí data: ${miss.length} ${pl(miss.length,'linka','linky','linek')}`, d: miss.join(' · ') + '. Doplň v Kmenových datech.' });
+  if (miss.length && !STATE.dle) recos.push({ cls: 'neutral', icon: '?', t: `Bez výpočtu – chybí data: ${miss.length} ${pl(miss.length,'linka','linky','linek')}`, d: miss.join(' · ') + '. Doplň v Kmenových datech.' });
   const noAvail = plan.filter(c => c.state === 'ok' && c.avail == null).map(c => c.line.name);
-  if (noAvail.length) recos.push({ cls: 'neutral', icon: '?', t: 'Chybí počet lidí k dispozici', d: noAvail.join(', ') + ' – doplň z rozpisu, jinak nejde spočítat bilanci.' });
-  return recos;
+  if (noAvail.length && !STATE.dle) recos.push({ cls: 'neutral', icon: '?', t: 'Chybí počet lidí k dispozici', d: noAvail.join(', ') + ' – doplň z rozpisu, jinak nejde spočítat bilanci.' });
+  return [...dleRecos(week), ...recos];
 }
 
 /* ===== 7. Render ===== */
@@ -1332,7 +1508,8 @@ function renderPlan(){
   const miss = plan.filter(c => c.state === 'missing' && c.vol > 0).length;
   const V = volumes(lk), unm = Object.keys(V.unmapped).length;
   el.innerHTML = `
-    ${miss ? `<div class="warnbox"><b>${miss} ${pl(miss,'linka','linky','linek')} bez normy nebo OP standardu</b> – počítá se jen volume. Doplň v <a href="#" onclick="go('master');return false">Kmenových datech</a>.</div>` : ''}
+    ${renderDleCard(w)}
+    ${miss && !STATE.dle ? `<div class="warnbox"><b>${miss} ${pl(miss,'linka','linky','linek')} bez normy nebo OP standardu</b> – počítá se jen volume. Doplň v <a href="#" onclick="go('master');return false">Kmenových datech</a>.</div>` : ''}
     ${unm ? `<div class="warnbox"><b>${unm} ${pl(unm,'kombinace','kombinace','kombinací')} projekt × kategorie bez linky</b> – jejich volume chybí. Viz Kmenová data → Převodník.</div>` : ''}
     <div class="grid-kpi">
       <div class="card kpi"><div class="lbl">Volume týdne</div><div class="val">${fmt(volT)}</div><div class="sub">${R.pct == null ? 'ks · hotové díly · Δ až po 2. exportu' : `<span class="tag ${R.cls}">${R.label}</span> ` + sgn(R.pct*100,1) + ' % vs. export ' + wkShort(pk)}</div></div>
@@ -1444,10 +1621,16 @@ function renderParams(){
     <tr><td>Absence + dovolená (%)</td><td><input class="cell n" data-p="absence" type="number" step="1" value="${Math.round(P.absence*100)}"></td></tr>
     <tr><td>Délka směny (h)</td><td><input class="cell n" data-p="hShift" type="number" value="${P.hShift}"></td></tr>
     <tr><td>Výchozí plán OEE (%)</td><td><input class="cell n" data-p="oee" type="number" value="${Math.round(P.oee*100)}"></td></tr>
+    <tr><td>Cílová efektivita DLE (%)<div class="note">prázdné = skutečnost posledního týdne po procesech (${esc(STATE.dle?.actual?.sheet || 'z importu DLE')})</div></td><td><input class="cell n" data-p="dleEff" type="number" step="1" value="${P.dleEff == null ? '' : Math.round(P.dleEff*100)}" placeholder="skut."></td></tr>
   </tbody></table></div>`;
 }
 
+function renderDleInfo(){
+  const D = STATE.dle;
+  $('dleInfo').innerHTML = D ? `Uloženo: <b>${esc(D.file)}</b> (${new Date(D.importedAt).toLocaleDateString('cs-CZ')}) · ${fmt(Object.keys(D.items).length)} dílů s routingem · transakce ${D.weeks.map(wkShort).join(', ') || '–'} · skutečnost ${esc(D.actual?.sheet || '–')}` : 'Routing zatím není nahraný – potřeba lidí se počítá jen z norem linek.';
+}
 function renderHistory(){
+  renderDleInfo();
   const keys = Object.keys(STATE.exports).sort().reverse();
   $('importHistory').innerHTML = keys.length ? `<div class="tbl-wrap"><table><thead><tr><th>Export</th><th>Soubor</th><th class="num">Dílů</th><th>Horizont</th><th>Importováno</th><th></th></tr></thead><tbody>
     ${keys.map(k => { const e = STATE.exports[k]; return `<tr><td class="mono"><b>${wkLabel(k)}</b></td><td>${esc(e.file)}</td><td class="num">${fmt(e.parts.length)}</td><td>${wkLabel(e.weeks[0])} – ${wkLabel(e.weeks.at(-1))}</td><td>${new Date(e.importedAt).toLocaleString('cs-CZ')}</td><td><button class="btn danger small" data-del-ex="${k}">Smazat</button></td></tr>`; }).join('')}
@@ -1515,14 +1698,24 @@ function renderHome(){
       viz: miniBars(top.slice(0, 4).map(c => ({ n: c.line.name, v: c.vol, c: 'var(--navy-2)' })), ''),
       desc: `<b>${top.length}</b> ${pl(top.length, 'linka', 'linky', 'linek')} s volume${miss ? `, <b class="down">${miss}</b> bez normy – směny se u nich nepočítají` : ''}.` });
 
-    // 3 – bilance lidí
-    const ok = plan.filter(c => c.state === 'ok' && c.gap != null);
-    const need = ok.reduce((s, c) => s + c.needDay, 0), avail = ok.reduce((s, c) => s + c.avail, 0), gap = avail - need, def = ok.filter(c => c.gap < 0).length;
-    h += tile({ title: 'Bilance lidí', value: ok.length ? sgn(gap) : '–', unit: 'OP/den', label: 'lidé k dispozici − potřeba (Po–Pá)', go: 'plan',
-      tone: !ok.length ? 'amber' : gap < 0 ? 'red' : 'green', badge: !ok.length ? 'chybí normy' : def ? `${def} ${pl(def, 'linka', 'linky', 'linek')} v deficitu` : 'vyrovnáno', badgeTone: !ok.length ? 'a' : def ? 'r' : 'g',
-      viz: ok.length ? miniBars([{ n: 'potřeba', v: need, c: '#9fb0bf' }, { n: 'k dispozici', v: avail, c: gap < 0 ? 'var(--crit)' : 'var(--good)' }]) : '',
-      desc: ok.length ? `Spočítáno pro <b>${ok.length}</b> z ${L.length} linek. Ostatním chybí norma, OP standard nebo počet lidí.`
-        : `Bilanci nejde spočítat: žádná linka nemá zároveň <b>normu, OP standard a lidi k dispozici</b>. Normy doplní David Varhan.` });
+    // 3 – bilance lidí (podle routingu, když je nahraný; jinak z norem linek)
+    const DN = dleNeed(w);
+    if (DN && DN.rows.some(r => r.people != null)){
+      const rs = DN.rows.filter(r => r.people != null), need = rs.reduce((s, r) => s + r.need, 0), avail = rs.reduce((s, r) => s + r.people, 0), gap = avail - need, def = rs.filter(r => r.gap < -0.5).length;
+      const worst = rs.slice().sort((a, b) => a.gap - b.gap).slice(0, 4);
+      h += tile({ title: 'Bilance lidí', value: sgn(Math.round(gap)), unit: 'lidí', label: 'v rozpisu − potřeba podle routingu (DLE)', go: 'plan',
+        tone: gap < -0.5 ? 'red' : 'green', badge: def ? `${def} ${pl(def, 'proces', 'procesy', 'procesů')} v deficitu` : 'vyrovnáno', badgeTone: def ? 'r' : 'g',
+        viz: miniBars(worst.map(r => ({ n: r.g, v: Math.round(r.gap), c: r.gap < 0 ? 'var(--crit)' : 'var(--good)' }))),
+        desc: `Potřeba <b>${fmt(need, 1)}</b> lidí, v rozpisu <b>${fmt(avail)}</b>. Efektivita ${M().params.dleEff != null ? 'cíl ' + fmt(M().params.dleEff * 100) + ' %' : 'jako ' + esc(STATE.dle.actual?.sheet || '–')}.` });
+    } else {
+      const ok = plan.filter(c => c.state === 'ok' && c.gap != null);
+      const need = ok.reduce((s, c) => s + c.needDay, 0), avail = ok.reduce((s, c) => s + c.avail, 0), gap = avail - need, def = ok.filter(c => c.gap < 0).length;
+      h += tile({ title: 'Bilance lidí', value: ok.length ? sgn(gap) : '–', unit: 'OP/den', label: 'lidé k dispozici − potřeba (Po–Pá)', go: 'plan',
+        tone: !ok.length ? 'amber' : gap < 0 ? 'red' : 'green', badge: !ok.length ? 'chybí normy' : def ? `${def} ${pl(def, 'linka', 'linky', 'linek')} v deficitu` : 'vyrovnáno', badgeTone: !ok.length ? 'a' : def ? 'r' : 'g',
+        viz: ok.length ? miniBars([{ n: 'potřeba', v: need, c: '#9fb0bf' }, { n: 'k dispozici', v: avail, c: gap < 0 ? 'var(--crit)' : 'var(--good)' }]) : '',
+        desc: ok.length ? `Spočítáno pro <b>${ok.length}</b> z ${L.length} linek. Ostatním chybí norma, OP standard nebo počet lidí.`
+          : `Bilanci nejde spočítat: žádná linka nemá zároveň <b>normu, OP standard a lidi k dispozici</b>. Normy doplní David Varhan.` });
+    }
 
     // 4 – doporučení
     const recos = recommend(lk, w), moves = recos.filter(r => r.cls === 'move').length, real = recos.filter(r => r.icon !== '?');
@@ -1602,6 +1795,8 @@ async function exportXlsx(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s3), 'Výhled');
   const D = skillData();
   if (D.people.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Jméno', 'Směna', ...D.cols.map(colName)]].concat(D.people.map(x => [x.name, [...x.shifts].join('/'), ...D.cols.map(c => x.cells[c] ? (x.cells[c].lvl || '·') + (x.cells[c].src === 'ručně' ? ' (ručně)' : '') : '')]))), 'Skill matrix');
+  const DN = dleNeed(w);
+  if (DN) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Proces','Hotové díly ks','Hodiny hotové','Hodiny polotovary','Std hodiny','Efektivita %','Potřeba lidí','Lidé v rozpisu','Bilance']].concat(DN.rows.map(r => [r.g, Math.round(r.fgQty), +r.hFG.toFixed(1), +r.hSub.toFixed(1), +r.h.toFixed(1), Math.round(r.eff*100), +r.need.toFixed(1), r.people ?? '', r.gap == null ? '' : +r.gap.toFixed(1)]))), 'Potřeba DLE');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s4), 'Metodika');
   await saveFile(`Plan_FTE_${wkShort(w).replace('/','-')}.xlsx`, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
@@ -1689,8 +1884,10 @@ $('rulesTbl').addEventListener('click', e => { const b = e.target.closest('[data
 $('btnAddRule').onclick = () => { M().rules.push({ p: '', k: '', d: '', l: '' }); save(); renderMaster(); };
 $('btnResetMaster').onclick = e => { if (!armed(e.currentTarget)) return; STATE.master = DEFAULT_MASTER(); save(); renderAll(); toast('Kmenová data obnovena'); };
 $('paramsBox').addEventListener('change', e => {
-  const k = e.target.dataset.p; if (!k) return; const v = num(e.target.value); if (v == null) return;
-  M().params[k] = (k === 'absence' || k === 'oee') ? v / 100 : v; save(); renderAll();
+  const k = e.target.dataset.p; if (!k) return; const v = num(e.target.value);
+  if (k === 'dleEff' && v == null){ delete M().params.dleEff; save(); renderAll(); return; }
+  if (v == null) return;
+  M().params[k] = (k === 'absence' || k === 'oee' || k === 'dleEff') ? v / 100 : v; save(); renderAll();
 });
 $('importHistory').addEventListener('click', e => { const b = e.target.closest('[data-del-ex]'); if (!b) return; if (!armed(b)) return; deleteExport(b.dataset.delEx); renderAll(); });
 $('btnMasterExport').onclick = () => saveFile(`FTE_kmenova_data_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(M(), null, 1), 'application/json');
@@ -1727,6 +1924,11 @@ const dropR = $('dropRoster');
 ['dragleave','drop'].forEach(ev => dropR.addEventListener(ev, e => { e.preventDefault(); dropR.classList.remove('over'); }));
 dropR.addEventListener('drop', e => handleRosterFiles([...e.dataTransfer.files]));
 $('rosterInput').addEventListener('change', e => { handleRosterFiles([...e.target.files]); e.target.value = ''; });
+const dropD = $('dropDle');
+['dragenter','dragover'].forEach(ev => dropD.addEventListener(ev, e => { e.preventDefault(); dropD.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => dropD.addEventListener(ev, e => { e.preventDefault(); dropD.classList.remove('over'); }));
+dropD.addEventListener('drop', e => handleDleFile(e.dataTransfer.files[0]));
+$('dleInput').addEventListener('change', e => { handleDleFile(e.target.files[0]); e.target.value = ''; });
 
 $('themeBtn').onclick = () => {
   const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
