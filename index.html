@@ -1607,6 +1607,10 @@ if (STATE.roster?.groups && !hasPeople()){
 }
 (M().skills || []).forEach(x => { const p = STATE.people[slug(x.key)]; if (p) (p.man ||= {})[x.col] = x.lvl; });
 delete M().skills; delete STATE.roster;
+// předvyplněná verze souboru (data vložená při sestavení): načíst, jen když prohlížeč nemá lidi ani exporty
+if (!hasPeople() && !Object.keys(STATE.exports).length && document.getElementById('seedData')){
+  try{ Object.assign(STATE, JSON.parse(document.getElementById('seedData').textContent)); persistLocal(); }catch(e){ console.warn('seed', e); }
+}
 fixPlanWeek();
 renderAll();
 connectDb();
