@@ -182,7 +182,8 @@ details.lendbox summary .muted{font-style:italic}
 .rtab-wrap{box-shadow:none;border:1px solid var(--line)} .rtab{table-layout:fixed;min-width:640px} .rtab th:first-child,.rtab td.rpos{width:170px}
 .rtab td{padding:3px 6px;vertical-align:middle;white-space:normal} .rtab td.rpos{font-weight:600;color:var(--th-text);font-size:12.5px}
 .rtab tbody tr:hover{background:transparent} .rtab .pchip{min-height:28px;padding:2px 6px}
-.rtab tr.rgap td{background:var(--crit-soft)} .rempty{color:var(--muted);font-size:12px;font-style:italic;border:1px dashed var(--line);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;width:100%;text-align:left;font-family:inherit} .rempty:hover{border-color:var(--info);color:var(--info)} .rtab tr.rfree td.rpos{color:var(--warn-text)} .rmiss{color:var(--crit);font-size:12px;font-weight:600}
+.rtab tr.rgap td{background:var(--crit-soft)} .rposbtn{all:unset;cursor:pointer;font-weight:600;border-bottom:1px dashed var(--line)} .rposbtn:hover,.rposbtn:focus-visible{color:var(--info);border-bottom-color:var(--info)}
+.rempty{color:var(--muted);font-size:12px;font-style:italic;border:1px dashed var(--line);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;width:100%;text-align:left;font-family:inherit} .rempty:hover{border-color:var(--info);color:var(--info)} .rtab tr.rfree td.rpos{color:var(--warn-text)} .rmiss{color:var(--crit);font-size:12px;font-weight:600}
 .rtab tr.radd td{border-bottom:0} .rtab .padd{width:100%}
 .rabs{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px}
 dialog#dlg{border:0;border-radius:12px;padding:18px 20px;width:min(560px,94vw);max-height:90vh;overflow:auto;background:var(--surface);color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.3)}
@@ -992,7 +993,7 @@ function renderRoster(){
     order.forEach(g => {
       shown.forEach(sh => (g.by[sh] ||= []).sort((a, b) => (a.row ?? 1e9) - (b.row ?? 1e9) || a.name.localeCompare(b.name, 'cs')));
       const nRows = Math.max(1, ...shown.map(sh => g.by[sh].length));
-      for (let k = 0; k < nRows; k++) rows += `<tr${g.row < -900 && !shown.some(sh => g.by[sh].length) ? ' class="rfree"' : ''}><td class="rpos">${k === 0 ? esc(g.k) : ''}</td>${shown.map(sh => `<td>${g.by[sh][k] ? personChip(g.by[sh][k], w, r.key, true) : g.row < -900 && k === 0 ? `<button class="rempty" data-slot="${esc(r.key)}" data-shift="${sh}" data-pos="${esc(g.k)}" title="Obsadit">neobsazeno – obsadit</button>` : ''}</td>`).join('')}</tr>`;
+      for (let k = 0; k < nRows; k++) rows += `<tr${g.row < -900 && !shown.some(sh => g.by[sh].length) ? ' class="rfree"' : ''}><td class="rpos">${k === 0 ? (line && !tail(g.k) ? `<button class="rposbtn" data-rename="${esc(r.key)}" data-pos="${esc(g.k)}" title="Přejmenovat pozici">${esc(g.k)}</button>` : esc(g.k)) : ''}</td>${shown.map(sh => `<td>${g.by[sh][k] ? personChip(g.by[sh][k], w, r.key, true) : g.row < -900 && k === 0 ? `<button class="rempty" data-slot="${esc(r.key)}" data-shift="${sh}" data-pos="${esc(g.k)}" title="Obsadit">neobsazeno – obsadit</button>` : ''}</td>`).join('')}</tr>`;
     });
     if (n && shown.some(sh => (n[sh] || 0) > r.shifts[sh].length)) rows += `<tr class="rgap"><td class="rpos">Chybí do potřeby</td>${shown.map(sh => { const m = (n[sh] || 0) - r.shifts[sh].length; return `<td>${m > 0 ? `<span class="rmiss">chybí ${m} ${pl(m, 'člověk', 'lidé', 'lidí')}</span>` : ''}</td>`; }).join('')}</tr>`;
     if (line) rows += `<tr class="radd"><td></td>${shown.map(sh => `<td><button class="padd" data-add="${esc(r.key)}" data-shift="${sh}">+ přidat člověka</button></td>`).join('')}</tr>`;
@@ -1052,6 +1053,28 @@ function openNeed(lineId){
     <div class="btns" style="justify-content:flex-end"><button type="button" class="btn secondary" id="nReset">Vrátit na rozpis</button><button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="nSave">Uložit</button></div></form>`;
   dl.showModal();
 }
+// přejmenování pozice: seznam pozic linky, lidé s touto pozicí na lince i uložené rozpisy
+function openRename(lineId, pos){
+  const dl = $('dlg'), l = lineById(lineId);
+  dl.innerHTML = `<form method="dialog" id="rnForm" data-line="${esc(lineId)}" data-pos="${esc(pos)}"><h2 style="margin-top:0">${esc(l.name)} · přejmenovat pozici</h2>
+    <div class="frow"><label>Nový název<input class="cell" id="rnName" value="${esc(pos)}"></label></div>
+    <p class="note">Změní se v seznamu pozic linky, u všech lidí na lince s pozicí „${esc(pos)}“ a ve všech uložených rozpisech. Prázdný název pozici ze seznamu linky odebere (lidé zůstanou bez pozice).</p>
+    <p class="note" id="rnErr"></p>
+    <div class="btns" style="justify-content:flex-end"><button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="rnSave">Uložit</button></div></form>`;
+  dl.showModal(); $('rnName').select();
+}
+async function renamePosition(lineId, from, to){
+  const l = lineById(lineId), same = x => norm(x) === norm(from);
+  const list = (l.positions || []).filter(x => !same(x) || to);
+  l.positions = [...new Set(list.map(x => same(x) ? to : x))];
+  if (!l.positions.length) delete l.positions;
+  const ids = operators().filter(p => p.home === lineId && same(p.pos || '')).map(p => p.id);
+  ids.forEach(id => { STATE.people[id].pos = to; STATE.people[id].updatedAt = new Date().toISOString(); });
+  const weeks = [];
+  Object.entries(STATE.plans).forEach(([w, pl]) => { let ch = false; Object.values(pl.assign || {}).forEach(a => { if (a.line === lineId && a.pos != null && same(a.pos)){ a.pos = to; ch = true; } }); if (ch) weeks.push(w); });
+  save(); await savePeople(ids); for (const w of weeks) await savePlan(w);
+  return ids.length;
+}
 // obsazení stroje / pozice: výběr z lidí na lince a směně (nejdřív bez pozice)
 function openSlot(lineId, shift, pos){
   const w = STATE.planWeek, dl = $('dlg');
@@ -1067,6 +1090,12 @@ async function ensurePlan(w){ if (!STATE.plans[w]){ STATE.plans[w] = generatePla
 async function onDialogClick(e){
   const dl = $('dlg'), t = e.target, w = STATE.planWeek;
   if (t.id === 'fClose'){ dl.close(); return; }
+  if (t.id === 'rnSave'){
+    const f = $('rnForm'), to = $('rnName').value.trim();
+    if (to === f.dataset.pos){ dl.close(); return; }
+    const n = await renamePosition(f.dataset.line, f.dataset.pos, to);
+    dl.close(); renderAll(); toast(to ? `Pozice „${f.dataset.pos}“ → „${to}“ (${n} ${pl(n, 'člověk', 'lidé', 'lidí')})` : `Pozice „${f.dataset.pos}“ odebrána ze seznamu`); return;
+  }
   if (t.id === 'sSave'){
     const f = $('sForm'), pid = $('sWho').value, p = STATE.people[pid], pos = f.dataset.pos;
     await ensurePlan(w);
@@ -1547,6 +1576,7 @@ $('rosterWeeks').addEventListener('click', e => { const b = e.target.closest('[d
 $('rosterBody').addEventListener('click', e => {
   const c = e.target.closest('[data-person]'); if (c){ openPerson(c.dataset.person); return; }
   const a = e.target.closest('[data-add]'); if (a){ openAdd(a.dataset.add, a.dataset.shift); return; }
+  const rn = e.target.closest('[data-rename]'); if (rn){ openRename(rn.dataset.rename, rn.dataset.pos); return; }
   const sl = e.target.closest('[data-slot]'); if (sl){ openSlot(sl.dataset.slot, sl.dataset.shift, sl.dataset.pos); return; }
   const n = e.target.closest('[data-need]'); if (n) openNeed(n.dataset.need);
 });
