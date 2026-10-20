@@ -362,8 +362,9 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
       <ul>
         <li><b>Std hodiny procesu</b> = Σ (odvolávka dílu v týdnu × hodiny přímé práce na kus z routingu, list Structuredata) + polotovary.</li>
         <li><b>Polotovary</b> (foaming, prefix, IMM, skiny…) v odvolávkách nejsou: hodiny = odvolávky hotových výrobků projektu × (hodiny polotovarů ÷ odvedené hotové výrobky projektu v týdnech z listu transactions). U projektů pod 300 ks/týden průměrné týdenní hodiny. Ověřeno: CW40–41 → CW42 celkem 11 234 h vs. skutečnost 11 011 h.</li>
-        <li><b>Potřeba lidí</b> = std hodiny ÷ hodin na FTE (37,5) ÷ efektivita DLE. Efektivita = skutečnost posledního týdne (std ÷ docházka) po procesech, nebo cílová z parametrů.</li>
-        <li><b>Lidé v rozpisu</b> = přítomní operátoři v Rozpisu týdne na linkách procesu (Assembly = OV51/64, SK336/W206, MBEAM, W177/W247 IP…; G463 Prefix = rozpis Prefix).</li>
+        <li><b>Potřeba lidí</b> = std hodiny ÷ (hodin na FTE 37,5 × pracovní dny ÷ 5) ÷ efektivita DLE. Pracovní dny bez českých státních svátků (CW44: 28. 10.). Efektivita = Σ std hodin ÷ Σ docházky ze všech listů CWxx v souboru DLE (CW40–42), nebo cílová z parametrů.</li>
+        <li><b>Bilance</b> = skutečné DIR procesu (průměr listů CWxx) − potřeba. Tedy: kolik lidí je navíc / chybí proti tomu, kolik proces skutečně používal, když se změní objem.</li>
+        <li><b>Rozpis (hlavy)</b> = přítomní operátoři v Rozpisu týdne na linkách procesu – jen orientačně: lidé na 12h směnách odpracují víc hodin a rozpisy nepokrývají procesy DLE přesně (např. Slush+ sewing: 18 v rozpisu vs. 26 DIR).</li>
       </ul>
       <h3>Doporučení – pravidla</h3>
       <ol>
@@ -1202,6 +1203,14 @@ const DLE_LINES = { 'assembly': ['ov5164', 'sk336', 'mbeam', 'w177ip', 'w177dp',
   'gbdp': ['gbdp'], 'imm': ['imm'], 'slush+ sewing': ['slush'], 'g463 prefix': ['g463l1', 'g463l2', 'g:prefix'] };
 const dleKey = g => norm(g).replace(/\s*\+\s*/g, '+ ').trim();
 const dleLines = g => DLE_LINES[dleKey(g)] || [];
+// české státní svátky (Velký pátek a Velikonoční pondělí podle data Velikonoc)
+function easter(y){ const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), mo = Math.floor((h + l - 7 * m + 114) / 31), da = (h + l - 7 * m + 114) % 31 + 1; return new Date(Date.UTC(y, mo - 1, da)); }
+function czHolidays(y){
+  const e = easter(y), add = n => { const d = new Date(e); d.setUTCDate(e.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  return new Set(['01-01', '05-01', '05-08', '07-05', '07-06', '09-28', '10-28', '11-17', '12-24', '12-25', '12-26'].map(x => `${y}-${x}`).concat([add(-2), add(1)]));
+}
+// pracovní dny Po–Pá bez svátků (hodiny na FTE se krátí poměrně)
+const workdays = week => weekDays(week).filter(d => !czHolidays(+d.slice(0, 4)).has(d)).length;
 const DLE_MIN_Q = 300;   // polotovary: poměr na kus hotového výrobku jen u projektů s aspoň 300 ks/týden, jinak průměrné hodiny
 const excelDate = v => typeof v === 'number' ? new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000) : v instanceof Date ? v : null;
 const isoWeekKey = d => { const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day); const y = t.getUTCFullYear(); return `${y}-${String(Math.ceil(((t - Date.UTC(y, 0, 1)) / 86400000 + 1) / 7)).padStart(2, '0')}`; };
@@ -1210,10 +1219,10 @@ async function parseDle(file){
   const XLSX = await getXLSX(), buf = await file.arrayBuffer();
   const names = XLSX.read(buf, { type: 'array', bookSheets: true }).SheetNames;
   const sdName = names.find(n => norm(n) === 'structuredata'), trName = names.find(n => norm(n) === 'transactions');
-  const cwName = names.filter(n => /^cw\s*\d{1,2}$/i.test(n.trim())).sort((a, b) => +b.replace(/\D/g, '') - +a.replace(/\D/g, ''))[0];
+  const cwNames = names.filter(n => /^cw\s*\d{1,2}$/i.test(n.trim())).sort((a, b) => +a.replace(/\D/g, '') - +b.replace(/\D/g, ''));
   if (!sdName) throw new Error(`Soubor nemá list „Structuredata“ (routing po dílech). Listy: ${names.join(', ')}`);
   const lk = latestKey(); if (!lk) throw new Error('Nejdřív nahraj přehled odvolávek – podle něj se pozná, co jsou hotové výrobky a co polotovary.');
-  const wb = XLSX.read(buf, { type: 'array', sheets: [sdName, trName, cwName].filter(Boolean), dense: true });
+  const wb = XLSX.read(buf, { type: 'array', sheets: [sdName, trName, ...cwNames].filter(Boolean), dense: true });
   const rowsOf = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' });
   const col = (hdr, ...keys) => hdr.findIndex(h => keys.some(k => norm(h).includes(k)));
   // Structuredata: díl → [hodiny/ks, proces]
@@ -1244,20 +1253,25 @@ async function parseDle(file){
   }
   const nW = Math.max(1, weeks.size);
   Object.entries(ratio).forEach(([p, byG]) => Object.values(byG).forEach(r => { r.q = Math.max(0, fgQ[p] || 0); r.n = nW; r.h = +r.h.toFixed(2); }));
-  // poslední týdenní list CWxx: standardní hodiny, docházka, lidé
-  let actual = null;
-  if (cwName){
-    const cw = rowsOf(cwName), a0 = cw.findIndex(r => r.some(v => norm(v) === 'attendance hours'));
-    if (a0 >= 0){
-      const A = cw[a0], cS = col(A, 'dl time/qty'), cA = A.findIndex(v => norm(v) === 'attendance hours'), cR = col(A, 'real pocet dir');
-      const gs = {};
-      for (const r of cw.slice(a0 + 1)){
-        const g = String(r[0] ?? '').trim(); if (!g || /celkov/i.test(g)) break;
-        const std = num(r[cS]), att = num(r[cA]); if (std == null || !att) continue;
-        gs[g] = { std: +std.toFixed(1), att: +att.toFixed(1), dir: num(r[cR]) };
-      }
-      actual = { sheet: cwName, week: isoWeekKey(new Date()).slice(0, 5) + String(+cwName.replace(/\D/g, '')).padStart(2, '0'), groups: gs };
+  // týdenní listy CWxx: standardní hodiny, docházka, lidé po procesech → efektivita a DIR jako průměr všech týdnů
+  const sheets = [];
+  cwNames.forEach(n => {
+    const cw = rowsOf(n), a0 = cw.findIndex(r => r.some(v => norm(v) === 'attendance hours')); if (a0 < 0) return;
+    const A = cw[a0], cS = col(A, 'dl time/qty'), cA = A.findIndex(v => norm(v) === 'attendance hours'), cR = col(A, 'real pocet dir');
+    const gs = {};
+    for (const r of cw.slice(a0 + 1)){
+      const g = String(r[0] ?? '').trim(); if (!g || /celkov/i.test(g)) break;
+      const std = num(r[cS]), att = num(r[cA]); if (std == null || !att) continue;
+      gs[g] = { std: +std.toFixed(1), att: +att.toFixed(1), dir: num(r[cR]) };
     }
+    if (Object.keys(gs).length) sheets.push({ sheet: n, groups: gs });
+  });
+  let actual = null;
+  if (sheets.length){
+    const groupsA = {};
+    sheets.forEach(sh => Object.entries(sh.groups).forEach(([g, v]) => { const a = groupsA[g] ||= { std: 0, att: 0, dir: 0, n: 0 }; a.std += v.std; a.att += v.att; a.dir += v.dir || 0; a.n++; }));
+    Object.values(groupsA).forEach(a => { a.dir = +(a.dir / a.n).toFixed(1); a.std = +a.std.toFixed(1); a.att = +a.att.toFixed(1); });
+    actual = { sheet: sheets.map(x => x.sheet).join('–').replace(/^(CW\s*\d+).*–(CW\s*\d+)$/i, '$1–$2'), sheets, groups: groupsA };
   }
   return { file: file.name, importedAt: new Date().toISOString(), groups, items, ratio, weeks: [...weeks].sort(), byWeek, actual, fgExport: lk };
 }
@@ -1282,29 +1296,31 @@ function dleNeed(week){
   const out = Object.values(rows).map(r => {
     const act = D.actual ? Object.entries(D.actual.groups).find(([k]) => dleKey(k) === dleKey(r.g))?.[1] : null;
     const eff = P.dleEff ?? (act ? act.std / act.att : null) ?? 1;
-    const h = r.hFG + r.hSub, need = h / (P.hFte * eff);
+    const h = r.hFG + r.hSub, need = h / (P.hFte * workdays(week) / 5 * eff);
     const keys = dleLines(r.g);
     const people = keys.length && hasPeople() ? operators().filter(p => !isAbsent(p, week) && keys.some(k => k.startsWith('g:') ? norm(slotOf(p, week).line).startsWith(norm(k)) : slotOf(p, week).line === k)).length : null;
-    return { ...r, h, eff, effSrc: P.dleEff != null ? 'cíl' : act ? D.actual.sheet : '100 %', need, people, gap: people == null ? null : people - need, act, lines: keys };
+    // bilance proti skutečnému DIR (průměr týdnů v souboru); hlavy z rozpisu jen orientačně (12h směny, rozsah procesu)
+    const base = act?.dir ?? people;
+    return { ...r, h, eff, effSrc: P.dleEff != null ? 'cíl' : act ? D.actual.sheet : '100 %', need, people, base, baseSrc: act?.dir != null ? 'DIR' : 'rozpis', gap: base == null ? null : base - need, act, lines: keys };
   }).filter(r => (r.h > 0.5 || r.people) && !/^[0\s–-]*$/.test(r.g));
   return { rows: out, missQty, missParts };
 }
 
 function renderDleCard(week){
   const N = dleNeed(week); if (!N) return '';
-  const D = STATE.dle, T = k => N.rows.reduce((s, r) => s + (r[k] || 0), 0);
-  const ppl = N.rows.some(r => r.people != null);
+  const D = STATE.dle, T = k => N.rows.reduce((s, r) => s + (r[k] || 0), 0), wd = workdays(week);
   return `<div class="card dlecard"><div class="rtop"><div><h3>Potřeba lidí podle routingu (DLE) – ${wkLabel(week)}</h3>
-    <span class="note">Hotové díly z odvolávek × hodiny z routingu + polotovary podle poměru z ${D.weeks.map(wkShort).join(', ')}. Lidé = hodiny ÷ ${fmt(M().params.hFte, 1)} h ÷ efektivita (${M().params.dleEff != null ? 'cíl ' + fmt(M().params.dleEff * 100) + ' %' : 'skutečnost ' + esc(D.actual?.sheet || '–')}).</span></div>
+    <span class="note">Std hodiny = hotové díly z odvolávek × routing + polotovary podle poměru z ${D.weeks.map(wkShort).join(', ')}. Potřeba lidí = std hodiny ÷ (${fmt(M().params.hFte, 1)} h × ${wd}/5 pracovních dnů${wd < 5 ? ' – svátek' : ''}) ÷ efektivita (${M().params.dleEff != null ? 'cíl ' + fmt(M().params.dleEff * 100) + ' %' : 'průměr ' + esc(D.actual?.sheet || '–')}). Bilance = skutečné DIR (průměr ${esc(D.actual?.sheet || '–')}) − potřeba.</span></div>
     <button class="btn secondary small" onclick="go('meth')">Nastavit efektivitu</button></div>
     ${N.missParts ? `<div class="warnbox">${N.missParts} ${pl(N.missParts, 'díl', 'díly', 'dílů')} z odvolávek (${fmt(N.missQty)} ks) nemá v routingu čas – v hodinách chybí.</div>` : ''}
-    <div class="tbl-wrap" style="box-shadow:none"><table><thead><tr><th>Proces</th><th class="num">Hotové díly ks</th><th class="num">Hodiny hotové</th><th class="num">Hodiny polotovary</th><th class="num">Std hodiny celkem</th><th class="num">Efektivita</th><th class="num">Potřeba lidí</th><th class="num">Lidé v rozpisu</th><th class="num">Bilance</th>${D.actual ? `<th class="num">Skutečnost ${esc(D.actual.sheet)} lidí</th>` : ''}</tr></thead><tbody>
+    <div class="tbl-wrap" style="box-shadow:none"><table><thead><tr><th>Proces</th><th class="num">Hotové díly ks</th><th class="num">Hodiny hotové</th><th class="num">Hodiny polotovary</th><th class="num">Std hodiny</th><th class="num">Efektivita</th><th class="num">Potřeba lidí</th><th class="num">Skutečnost DIR</th><th class="num">Bilance</th><th class="num" title="Hlavy v Rozpisu týdne – 12h směny a rozsah procesu se liší od DIR">Rozpis (hlavy)</th></tr></thead><tbody>
     ${N.rows.sort((a, b) => b.h - a.h).map(r => `<tr><td><b>${esc(r.g)}</b><div class="note">${r.lines.map(colName).map(esc).join(', ') || '–'}</div></td>
       <td class="num">${fmt(r.fgQty)}</td><td class="num">${fmt(r.hFG)}</td><td class="num">${fmt(r.hSub)}</td><td class="num"><b>${fmt(r.h)}</b></td><td class="num">${fmt(r.eff * 100)} %</td>
-      <td class="num"><b>${fmt(r.need, 1)}</b></td><td class="num">${r.people ?? '–'}</td><td class="num ${r.gap < -0.5 ? 'neg' : r.gap > 0.5 ? 'pos' : ''}">${r.gap == null ? '–' : sgn(r.gap, 1)}</td>
-      ${D.actual ? `<td class="num">${r.act?.dir != null ? fmt(r.act.dir, 1) : '–'}</td>` : ''}</tr>`).join('')}
-    <tr class="tot"><td><b>Celkem</b></td><td class="num">${fmt(T('fgQty'))}</td><td class="num">${fmt(T('hFG'))}</td><td class="num">${fmt(T('hSub'))}</td><td class="num"><b>${fmt(T('h'))}</b></td><td></td><td class="num"><b>${fmt(T('need'), 1)}</b></td><td class="num">${ppl ? fmt(T('people')) : '–'}</td><td class="num ${T('gap') < 0 ? 'neg' : 'pos'}">${ppl ? sgn(T('gap'), 1) : '–'}</td>${D.actual ? `<td class="num">${fmt(Object.values(D.actual.groups).reduce((s, g) => s + (g.dir || 0), 0), 1)}</td>` : ''}</tr>
-    </tbody></table></div></div>`;
+      <td class="num"><b>${fmt(r.need, 1)}</b></td><td class="num">${r.base == null ? '–' : fmt(r.base, 1)}${r.baseSrc === 'rozpis' ? '<div class="note">rozpis</div>' : ''}</td><td class="num ${r.gap < -0.5 ? 'neg' : r.gap > 0.5 ? 'pos' : ''}">${r.gap == null ? '–' : sgn(r.gap, 1)}</td>
+      <td class="num muted">${r.people ?? '–'}</td></tr>`).join('')}
+    <tr class="tot"><td><b>Celkem</b></td><td class="num">${fmt(T('fgQty'))}</td><td class="num">${fmt(T('hFG'))}</td><td class="num">${fmt(T('hSub'))}</td><td class="num"><b>${fmt(T('h'))}</b></td><td></td><td class="num"><b>${fmt(T('need'), 1)}</b></td><td class="num">${fmt(T('base'), 1)}</td><td class="num ${T('gap') < 0 ? 'neg' : 'pos'}">${sgn(T('gap'), 1)}</td><td class="num muted">${fmt(T('people'))}</td></tr>
+    </tbody></table></div>
+    <p class="note">Bilance kladná = proces má víc lidí, než podle odvolávek potřebuje (při stejné efektivitě jako v posledních týdnech); záporná = chybí. Rozpis (hlavy) je jen orientační – lidé na 12h směnách odpracují víc hodin a rozpisy nepokrývají procesy DLE přesně.</p></div>`;
 }
 
 // doporučení po procesech (když je routing): přesuny přebytek → deficit, jinak dočasný / trvalý deficit a přebytek
@@ -1322,7 +1338,7 @@ function dleRecos(week){
       const names = [...new Set(from.flatMap(f => to.flatMap(t => qualifiedMovers(f, t))))];
       if (!names.length) return;
       const n = Math.min(bal[sg], -bal[dg], names.length); bal[sg] -= n; bal[dg] += n;
-      recos.push({ cls: 'move', icon: '⇄', t: `Přesunout ${n} ${pl(n, 'člověka', 'lidi', 'lidí')}: ${sg} → ${dg}`, d: `Podle routingu má ${sg} přebytek a ${dg} deficit. Kvalifikovaní (Z/P): ${names.slice(0, 6).join(', ')}${names.length > 6 ? ` a dalších ${names.length - 6}` : ''}. Přesun zadej v Rozpisu týdne.` });
+      recos.push({ cls: 'move', icon: '⇄', t: `Přesunout ${n} ${pl(n, 'člověka', 'lidi', 'lidí')}: ${sg} → ${dg}`, d: `Podle routingu a skutečného DIR má ${sg} přebytek a ${dg} deficit. Kvalifikovaní (Z/P): ${names.slice(0, 6).join(', ')}${names.length > 6 ? ` a dalších ${names.length - 6}` : ''}. Přesun zadej v Rozpisu týdne.` });
     });
   });
   Object.entries(bal).forEach(([g, v]) => {
@@ -1700,13 +1716,13 @@ function renderHome(){
 
     // 3 – bilance lidí (podle routingu, když je nahraný; jinak z norem linek)
     const DN = dleNeed(w);
-    if (DN && DN.rows.some(r => r.people != null)){
-      const rs = DN.rows.filter(r => r.people != null), need = rs.reduce((s, r) => s + r.need, 0), avail = rs.reduce((s, r) => s + r.people, 0), gap = avail - need, def = rs.filter(r => r.gap < -0.5).length;
+    if (DN && DN.rows.some(r => r.base != null)){
+      const rs = DN.rows.filter(r => r.base != null), need = rs.reduce((s, r) => s + r.need, 0), avail = rs.reduce((s, r) => s + r.base, 0), gap = avail - need, def = rs.filter(r => r.gap < -0.5).length;
       const worst = rs.slice().sort((a, b) => a.gap - b.gap).slice(0, 4);
-      h += tile({ title: 'Bilance lidí', value: sgn(Math.round(gap)), unit: 'lidí', label: 'v rozpisu − potřeba podle routingu (DLE)', go: 'plan',
+      h += tile({ title: 'Bilance lidí', value: sgn(Math.round(gap)), unit: 'lidí', label: 'skutečné DIR − potřeba podle routingu (DLE)', go: 'plan',
         tone: gap < -0.5 ? 'red' : 'green', badge: def ? `${def} ${pl(def, 'proces', 'procesy', 'procesů')} v deficitu` : 'vyrovnáno', badgeTone: def ? 'r' : 'g',
         viz: miniBars(worst.map(r => ({ n: r.g, v: Math.round(r.gap), c: r.gap < 0 ? 'var(--crit)' : 'var(--good)' }))),
-        desc: `Potřeba <b>${fmt(need, 1)}</b> lidí, v rozpisu <b>${fmt(avail)}</b>. Efektivita ${M().params.dleEff != null ? 'cíl ' + fmt(M().params.dleEff * 100) + ' %' : 'jako ' + esc(STATE.dle.actual?.sheet || '–')}.` });
+        desc: `Potřeba <b>${fmt(need, 1)}</b> lidí, skutečně (DIR) <b>${fmt(avail, 1)}</b>. Efektivita ${M().params.dleEff != null ? 'cíl ' + fmt(M().params.dleEff * 100) + ' %' : 'průměr ' + esc(STATE.dle.actual?.sheet || '–')}.` });
     } else {
       const ok = plan.filter(c => c.state === 'ok' && c.gap != null);
       const need = ok.reduce((s, c) => s + c.needDay, 0), avail = ok.reduce((s, c) => s + c.avail, 0), gap = avail - need, def = ok.filter(c => c.gap < 0).length;
