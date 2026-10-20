@@ -6,6 +6,7 @@ Stav k 20. 10. 2026. Pokračování v Claude Code.
 Každý týden před tvorbou rozpisu směn importovat nové odvolávky od logistiky. Aplikace spočítá potřebu lidí po linkách a doporučí přesuny, přesčas/víkend nebo agenturu. Řetězec: odvolávky → volume po lince → směny → OP → porovnání s lidmi k dispozici → doporučení → (později) DLE a € dopad.
 
 ## Soubory
+- **Sdílená aplikace (claude.ai, databáze pro všechny): https://claude.ai/artifact/ET3UZWtGNRiDiX32ysucdw** – publikuje se z `index.html` (bez obalu `<html>/<head>/<body>`), capabilities `db` + `downloads`. Databáze: `app/master`, `app/roster`, `exports/<rok-týden>`, `people/<id>`, `plans/<rok-týden>`.
 - `FTE_Planovani_Plana.html` – hlavní aplikace (single-file, localStorage, SheetJS z cdnjs lazy). Pohledy: Plán týdne, Doporučení, Výhled 12 t., Kmenová data, Import, Metodika. Export do Excelu.
 - `FTE_model_Plana_CW43.xlsx` – Excel verze modelu (Převodník, Normy, Parametry, Volume po lince, Potřeba FTE, Linky z rozpisů, Kontrola jmen).
 - Návrh postupu (dokument): https://claude.ai/code/artifact/c12d9868-8f67-452e-bb26-527073730bbf
@@ -31,4 +32,5 @@ Single-file HTML, cdnjs jen, detekce sloupců podle hlavičky, čeština s diakr
 3. ~~Import rozpisů směn přímo do aplikace~~ – hotovo (Import → Import rozpisů směn, jednotná šablona PL-SM-FR-G09-09). Zbývá: Prefix L1/L2 (rozpis nemá rozdělení, posádky A/B) a SK336 (nový rozpis 9/6/0 = 15 OP vs. dřív 9/2/9 = 20 – ověřit).
 4. Napojení Summary PLANA1 a DLE (skutečnost vs. plán, gap v €), sazby DL/IDL/agentura.
 5. ~~Skill matrix~~ – hotovo (pohled Skill matrix: z rozpisů SKILL LEVEL Z/P/T/N + ručně doplněné kvalifikace na jiných linkách, v Doporučení se u přesunu vypíšou kvalifikovaní Z/P). IMM, OV51/64 a Prefix nemají v rozpisu vyplněný SKILL LEVEL → doplnit v rozpisech. Zbývá víkendový rozpis.
-6. Případně sdílení přes SharePoint / Firebase RTDB.
+6. ~~Sdílení~~ – hotovo (claude.ai artefakt se sdílenou databází). TL sdílet jako Contributor (mohou měnit rozpis, lidi, nepřítomnosti).
+7. Rozpis týdne v aplikaci: lidé jsou záznamy (domovská linka, směna, pozice, SKILL LEVEL, nepřítomnosti); rozpis = stálé obsazení − nepřítomní, díry z přebytků jen Z/P; ruční změny zamčené. Potřeba na směnu: norma → ručně → obsazení z rozpisu CW43. Otevřené: Prefix (80 lidí, posádky A/B) není přiřazený k L1/L2 – L1/L2 mají normu, ale nikoho → chybí 120 OP.
