@@ -361,6 +361,8 @@ async function parseFile(file){
     const p = String(r[idx.p] ?? '').trim();
     if (!p) continue;
     if (norm(p) === 'bez projektu' || norm(p) === 'celkem'){ skipped++; continue; }
+    // mezisoučty projektu / kategorie nemají číslo dílu – jinak by se volume započetlo dvakrát
+    if (idx.dil >= 0 && !String(r[idx.dil] ?? '').trim()) continue;
     const vals = wcols.map(c => num(r[c.j]) || 0);
     if (!vals.some(v => v)) continue;
     parts.push([p, String(r[idx.k] ?? '').trim() || 'bez kategorie', idx.d >= 0 ? String(r[idx.d] ?? '').trim() : '', vals, idx.dil >= 0 ? String(r[idx.dil] ?? '') : '']);
@@ -413,7 +415,8 @@ function commitImport(){
 /* ===== 6. Výpočty ===== */
 function ruleMatch(rule, part){
   if (norm(rule.p) !== norm(part[0]) || norm(rule.k) !== norm(part[1])) return false;
-  if (rule.d && !new RegExp(`(^|[^A-Z])${rule.d.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`).test(String(part[2]).toUpperCase())) return false;
+  // „Popis obsahuje“ = prostý podřetězec (popisy bývají slepené, např. „FRTLH463“)
+  if (rule.d && !String(part[2]).toUpperCase().includes(rule.d.toUpperCase())) return false;
   return true;
 }
 const volCache = new Map();
