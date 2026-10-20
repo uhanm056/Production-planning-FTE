@@ -17,6 +17,7 @@ Každý týden před tvorbou rozpisu směn importovat nové odvolávky od logist
 - G463 Prefix L1 a L2 vždy zvlášť: L1 = DP díly s „LH“ v popisu, L2 = „RH“ (předpoklad, ověřit). Norma 140 ks/8h, 20 OP/linka/směnu, OEE nastaveno 100 % (140 = cílový výstup – ověřit).
 - Počty lidí = OP za den z rozpisů CW43 (jen přítomní, bez TL/TR). Milan si není jistý, že sedí → doplní/ověří později, model běží bez nich.
 - Foam: K2 (3 směny, 25 OP/den + Scoring 6), K1 (jen ranní 12h, 7 OP). Bez vazby na odvolávky.
+- Import rozpisů: OP za den = unikátní jména bez TL/TR; „A + B“ = 2 lidé, „A/B“ = 1 sdílená pozice; jména bez malých písmen (QS, TL IMM) se nepočítají; nepřítomnosti se jen zobrazí, neodečítají. Barvy buněk (zaměstnavatel) neodpovídají legendě → nečtou se.
 - Lidé ve více rozpisech: Tsiple Maryna (OV51/64, SK336, MFA2), Biro Kristina (OV51/64, MBEAM), Virich Oleksandr (G463 Assy, Prefix) → podklad pro „Sdílí lidi s“, ověřit.
 - Normy ostatních linek chybí – owner David Varhan. Nic nevymýšlet.
 - W520 „bez kategorie“ (2 díly, 6 ks za celý horizont CW43) – nejasné, kam patří. Záměrně nenamapováno, v aplikaci zůstává mezi nenamapovanými.
@@ -27,7 +28,7 @@ Single-file HTML, cdnjs jen, detekce sloupců podle hlavičky, čeština s diakr
 ## Další kroky
 1. Doplnit normy + OP standard (Slush, MBEAM, G463 Assembly, SK336/W206 první).
 2. Ověřit lidi k dispozici (Gemba / potvrzení TL) a „Sdílí lidi s“.
-3. Import rozpisů směn přímo do aplikace (lidé k dispozici automaticky místo ručně).
+3. ~~Import rozpisů směn přímo do aplikace~~ – hotovo (Import → Import rozpisů směn, jednotná šablona PL-SM-FR-G09-09). Zbývá: Prefix L1/L2 (rozpis nemá rozdělení, posádky A/B) a SK336 (nový rozpis 9/6/0 = 15 OP vs. dřív 9/2/9 = 20 – ověřit).
 4. Napojení Summary PLANA1 a DLE (skutečnost vs. plán, gap v €), sazby DL/IDL/agentura.
 5. Skill matrix pro přesuny (kdo může na kterou linku), víkendový rozpis.
 6. Případně sdílení přes SharePoint / Firebase RTDB.
