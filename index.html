@@ -440,9 +440,12 @@ function volumes(exKey){
       ex.weeks.forEach((w, i) => { out[rule.l][w] = (out[rule.l][w] || 0) + part[3][i]; });
     });
   });
+  // hotové díly za týden – každý namapovaný díl jednou, i když jde přes víc linek (Prefix → Assembly)
+  const parts = {};
+  mapped.forEach(pi => ex.weeks.forEach((w, i) => { parts[w] = (parts[w] || 0) + ex.parts[pi][3][i]; }));
   const unmapped = {};
   ex.parts.forEach((part, pi) => { if (!mapped.has(pi)){ const k = part[0] + ' · ' + part[1]; unmapped[k] = (unmapped[k] || 0) + part[3].reduce((a,b)=>a+b,0); } });
-  const res = { out, unmapped, weeks: ex.weeks };
+  const res = { out, parts, unmapped, weeks: ex.weeks };
   volCache.set(sig, res);
   return res;
 }
@@ -545,8 +548,8 @@ function renderPlan(){
   $('planTitle').textContent = `Plán ${wkLabel(w)}`;
   $('planSub').textContent = `Export odvolávek ${wkLabel(lk)}${pk ? ' · srovnání s exportem ' + wkLabel(pk) : ' · předchozí export zatím chybí'}`;
   const ok = plan.filter(c => c.state === 'ok');
-  const volT = plan.reduce((s, c) => s + (c.vol || 0), 0);
-  const volP = prevV ? M().lines.reduce((s, l) => s + (prevV.out[l.id]?.[w] || 0), 0) : null;
+  const volT = volumes(lk).parts[w] || 0;
+  const volP = prevV ? (prevV.parts[w] || 0) : null;
   const R = rag(volT, prevV ? volP : null);
   const need = ok.filter(c => c.needDay != null).reduce((s, c) => s + c.needDay, 0);
   const avail = ok.filter(c => c.needDay != null && c.line.avail != null).reduce((s, c) => s + c.line.avail, 0);
