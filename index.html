@@ -96,6 +96,16 @@ details.lendbox summary .muted{font-style:italic}
 .lend input{display:none}
 .lend label:has(input:checked){background:var(--navy);color:#fff;border-color:var(--navy)}
 .note{font-size:.85rem;color:var(--muted)}
+.sk{display:inline-flex;align-items:center;justify-content:center;min-width:1.6rem;height:1.6rem;border-radius:6px;font:600 .8rem var(--f-mono);color:#fff;background:var(--muted)}
+.sk.Z{background:var(--good)} .sk.P{background:var(--info)} .sk.T{background:var(--warn)} .sk.N{background:var(--muted)} .sk.x{background:transparent;color:var(--muted);border:1px dashed var(--line)}
+.sk.man{background:transparent;border:2px solid currentColor} .sk.man.Z{color:var(--good)} .sk.man.P{color:var(--info)} .sk.man.T{color:var(--warn)} .sk.man.N{color:var(--muted)}
+.sk-btn{all:unset;cursor:pointer;display:inline-flex;min-width:1.6rem;min-height:1.6rem;align-items:center;justify-content:center;border-radius:6px}
+.sk-btn:focus-visible{outline:2px solid var(--navy-2)} .sk-empty{color:var(--line);font-weight:600} .sk-btn:hover .sk-empty{color:var(--navy-2)}
+.sk-tbl td.sk-cell,.sk-tbl th.sk-col{text-align:center} .sk-tbl th.sk-col{font-size:.72rem;white-space:normal;min-width:70px}
+.sk-wrap{max-height:70vh;overflow:auto} .sk-wrap thead th{position:sticky;top:0;z-index:1}
+.sk-filter{align-items:center;flex-wrap:wrap;margin-bottom:.6rem}
+.sk-legend{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem;font-size:.85rem;color:var(--muted);margin:.25rem 0 .5rem} .sk-legend .sk{margin-left:.6rem} .sk-legend .sk:first-child{margin-left:0}
+.sk-filter .cell{width:auto;flex:0 1 auto}
 .warnbox{border:1px solid var(--warn);background:var(--warn-soft);border-radius:10px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.9rem}
 .infobox{border:1px solid var(--line);background:var(--navy-soft);border-radius:10px;padding:.7rem 1rem;margin-bottom:1rem;font-size:.9rem}
 .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;min-width:80px}
@@ -120,6 +130,7 @@ code{font-family:var(--f-mono);font-size:.85em;background:var(--navy-soft);paddi
   <button data-go="plan" class="active"><span class="ico">▦</span>Plán týdne</button>
   <button data-go="reco"><span class="ico">⇄</span>Doporučení</button>
   <button data-go="outlook"><span class="ico">▤</span>Výhled 12 t.</button>
+  <button data-go="skills"><span class="ico">☷</span>Skill matrix</button>
   <button data-go="master"><span class="ico">⚙</span>Kmenová data</button>
   <button data-go="import"><span class="ico">⇪</span>Import</button>
   <button data-go="meth"><span class="ico">ⓘ</span>Metodika</button>
@@ -150,6 +161,12 @@ code{font-family:var(--f-mono);font-size:.85em;background:var(--navy-soft);paddi
     <div class="head"><div><h1>Výhled 12 týdnů</h1><p>Vytížení linek a bilance lidí od plánovaného týdne dál.</p></div></div>
     <div class="chips" id="outlookChips"></div>
     <div id="outlookBody"></div>
+  </section>
+
+  <!-- SKILL MATRIX -->
+  <section data-view="skills">
+    <div class="head"><div><h1>Skill matrix</h1><p>Kdo může na kterou linku – z rozpisů směn (SKILL LEVEL) a ručně doplněných kvalifikací. Podklad pro přesuny v Doporučení.</p></div></div>
+    <div id="skillsBody"></div>
   </section>
 
   <!-- KMENOVÁ DATA -->
@@ -207,7 +224,7 @@ code{font-family:var(--f-mono);font-size:.85em;background:var(--navy-soft);paddi
       </ul>
       <h3>Doporučení – pravidla</h3>
       <ol>
-        <li>Nejdřív přesuny z linek s přebytkem na linky s deficitem, jen mezi linkami označenými „Sdílí lidi s“. Největší deficit se kryje první.</li>
+        <li>Nejdřív přesuny z linek s přebytkem na linky s deficitem, jen mezi linkami označenými „Sdílí lidi s“. Největší deficit se kryje první. U přesunu se ze skill matrix vypíšou lidé zdrojové linky s úrovní Z nebo P na cílové lince.</li>
         <li>Zbylý deficit: když chybí lidi i ve 3 ze 4 následujících týdnů → <b>trvalý deficit</b> (agentura / nábor). Jinak → <b>dočasný</b> (přesčas, víkendová směna přes víkendový rozpis).</li>
         <li>Zbylý přebytek: přebytek i ve 3 ze 4 následujících týdnů → <b>trvalý</b> (snížit agenturu, zastavit nábor). Jinak → dočasný (dovolené, školení, tréninkové centrum, rework).</li>
         <li>Přetížená linka (směny nad max) → předvýroba v předchozím týdnu nebo víkend, eskalace s logistikou.</li>
@@ -459,9 +476,10 @@ function parseRoster(wb, fileName){
   rows[h0].forEach((v, j) => {
     if (norm(v) !== 'pozice') return;
     const t = rows[h0].findIndex((x, k) => k > j && norm(x) === 'cas');
+    const sk = rows[h0].findIndex((x, k) => k > j && norm(x) === 'skill level');
     let label = '';
     for (let i = h0 - 1; i >= 0 && !label; i--) label = rows[i][j - 1] || '';
-    blocks.push({ c: j - 1, t, label: label || `Směna ${blocks.length + 1}`, code: SHIFT_CODE(label) });
+    blocks.push({ c: j - 1, t, sk, label: label || `Směna ${blocks.length + 1}`, code: SHIFT_CODE(label) });
   });
   const codes = blocks.map(b => b.code);
   const rotation = codes.some((c, i) => c && codes.indexOf(c) !== i);
@@ -479,7 +497,7 @@ function parseRoster(wb, fileName){
       const time = b.t >= 0 ? r[b.t] : '';
       raw.replace(/\([^)]*\)/g, ' ').split('+').map(s => s.trim()).filter(Boolean).forEach(n => {
         if (!/[a-zà-ž]/.test(n)){ placeholders.push(`${n} (${b.label})`); return; }
-        people.push({ name: n, key: personKey(n), block: bi, section, pos: r[b.c + 1] || '', time, h12: /06:00\s*-\s*18:00|18:00\s*-\s*06:00/.test(time), tl, slot: /\//.test(n) });
+        people.push({ name: n, key: personKey(n), block: bi, section, pos: r[b.c + 1] || '', skill: b.sk >= 0 && /^[ZPTN]$/i.test(r[b.sk]) ? r[b.sk].toUpperCase() : '', time, h12: /06:00\s*-\s*18:00|18:00\s*-\s*06:00/.test(time), tl, slot: /\//.test(n) });
       });
     });
   }
@@ -563,6 +581,72 @@ function commitRoster(){
   renderAll();
 }
 
+/* ----- Skill matrix: kdo umí na které lince (z rozpisů + ruční doplnění) ----- */
+const SKILLS = ['N', 'T', 'P', 'Z'];   // pořadí při klikání; Z + P = kvalifikovaný (jede normu)
+const SKILL_TXT = { Z: 'zaškolený / zkušený', P: 'proškolený / samostatný', T: 'trénink', N: 'nástup' };
+const skillRank = s => SKILLS.indexOf(s);
+const qualified = s => s === 'Z' || s === 'P';
+const skillCol = (g, p) => (g.rotation ? null : rosterLine(g.title, p.section)) || 'g:' + g.title;
+const colName = c => c.startsWith('g:') ? c.slice(2) : (lineById(c)?.name || c);
+
+// lidé × sloupce (linky); z rozpisu nejvyšší úroveň na dané lince, ruční záznamy jen tam, kde rozpis nic neuvádí
+function skillData(){
+  const groups = STATE.roster?.groups || [], P = new Map(), cols = new Set();
+  groups.forEach(g => g.people.filter(p => !p.tl && !p.slot).forEach(p => {
+    const c = skillCol(g, p); cols.add(c);
+    if (!P.has(p.key)) P.set(p.key, { key: p.key, name: p.name, home: new Set(), shifts: new Set(), cells: {} });
+    const x = P.get(p.key); x.home.add(c); x.shifts.add(g.blocks[p.block].code || g.blocks[p.block].label);
+    const cell = x.cells[c] ||= { lvl: '', pos: new Set(), src: 'rozpis' };
+    if (p.pos) cell.pos.add(p.pos);
+    if (skillRank(p.skill) > skillRank(cell.lvl)) cell.lvl = p.skill;
+  }));
+  (M().skills || []).forEach(s => {
+    const x = P.get(s.key); if (!x) return;
+    cols.add(s.col);
+    if (!x.cells[s.col]) x.cells[s.col] = { lvl: s.lvl, pos: new Set(), src: 'ručně' };
+  });
+  const order = M().lines.map(l => l.id);
+  const C = [...cols].sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999) || a.localeCompare(b));
+  return { people: [...P.values()].sort((a, b) => a.name.localeCompare(b.name, 'cs')), cols: C, noSkill: groups.length && !groups.some(g => g.people.some(p => 'skill' in p)) };
+}
+// kvalifikovaní (Z/P) na cílové lince, kteří mají domov na zdrojové lince
+function qualifiedMovers(from, to){
+  return skillData().people.filter(x => x.home.has(from) && !x.home.has(to) && qualified(x.cells[to]?.lvl)).map(x => x.name);
+}
+
+function renderSkills(){
+  const el = $('skillsBody'), D = skillData(), F = VIEW.sk ||= { q: '', home: '', multi: false };
+  if (!D.people.length){ el.innerHTML = emptyState('Skill matrix se skládá z rozpisů směn. Naimportuj rozpisy (Import → Import rozpisů směn).'); return; }
+  const sum = D.cols.map(c => {
+    const lv = D.people.map(x => x.cells[c]?.lvl).filter(v => v !== undefined);
+    const cnt = k => lv.filter(v => v === k).length;
+    const foreign = D.people.filter(x => !x.home.has(c) && qualified(x.cells[c]?.lvl)).length;
+    return `<tr><td><b>${esc(colName(c))}</b></td>${SKILLS.slice().reverse().map(k => `<td class="num">${cnt(k) || ''}</td>`).join('')}<td class="num">${lv.filter(v => !v).length || ''}</td><td class="num"><b>${cnt('Z') + cnt('P')}</b></td><td class="num">${foreign || ''}</td></tr>`;
+  }).join('');
+  const q = norm(F.q);
+  const rows = D.people.filter(x => (!q || norm(x.name).includes(q)) && (!F.home || x.home.has(F.home)) && (!F.multi || Object.keys(x.cells).length > 1));
+  const badge = (cell, key, c) => {
+    if (cell && cell.src === 'rozpis') return `<span class="sk ${cell.lvl || 'x'}" title="${esc([cell.lvl ? SKILL_TXT[cell.lvl] : 'úroveň neuvedena', ...cell.pos].join(' · '))}">${cell.lvl || '·'}</span>`;
+    return `<button class="sk-btn" data-sk="${esc(key)}" data-col="${esc(c)}" title="Kliknutím doplnit kvalifikaci (N → T → P → Z → nic)">${cell ? `<span class="sk man ${cell.lvl}">${cell.lvl}</span>` : '<span class="sk-empty">+</span>'}</button>`;
+  };
+  el.innerHTML = `
+    ${D.noSkill ? '<div class="warnbox">Uložené rozpisy jsou z dřívější verze bez úrovně SKILL LEVEL – naimportuj rozpisy znovu.</div>' : ''}
+    <div class="sk-legend"><span class="sk Z">Z</span> ${SKILL_TXT.Z} <span class="sk P">P</span> ${SKILL_TXT.P} <span class="sk T">T</span> ${SKILL_TXT.T} <span class="sk N">N</span> ${SKILL_TXT.N} <span class="sk man P">P</span> doplněno ručně <span class="sk x">·</span> v rozpisu bez úrovně</div>
+    <h2>Souhrn po linkách</h2>
+    <div class="tbl-wrap" style="max-width:1000px"><table><thead><tr><th>Linka / rozpis</th><th class="num">Z</th><th class="num">P</th><th class="num">T</th><th class="num">N</th><th class="num">bez úrovně</th><th class="num">Kvalifikovaní (Z+P)</th><th class="num">z toho z jiných linek</th></tr></thead><tbody>${sum}</tbody></table></div>
+    <h2>Lidé</h2>
+    <div class="btns sk-filter">
+      <input class="cell" id="skQ" placeholder="Hledat jméno…" value="${esc(F.q)}" style="min-width:200px">
+      <select class="cell" id="skHome"><option value="">Všechny linky</option>${D.cols.map(c => `<option value="${esc(c)}" ${F.home === c ? 'selected' : ''}>${esc(colName(c))}</option>`).join('')}</select>
+      <label class="note"><input type="checkbox" id="skMulti" ${F.multi ? 'checked' : ''}> jen lidé na víc linkách</label>
+      <span class="note">${rows.length} z ${D.people.length} lidí</span>
+    </div>
+    <div class="tbl-wrap sk-wrap"><table class="sk-tbl"><thead><tr><th>Jméno</th><th>Směna</th>${D.cols.map(c => `<th class="sk-col">${esc(colName(c))}</th>`).join('')}</tr></thead><tbody>
+    ${rows.map(x => `<tr><td>${esc(x.name)}</td><td class="mono">${esc([...x.shifts].join('/'))}</td>${D.cols.map(c => `<td class="sk-cell">${badge(x.cells[c], x.key, c)}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <p class="note">Z rozpisu = pozice, na které člověk tento týden je, s úrovní ze sloupce SKILL LEVEL (nejvyšší, má-li jich víc). Kvalifikaci na jiné lince doplň kliknutím na +; ukládá se do kmenových dat (a jejich zálohy). TL/TR a sdílené pozice „A/B“ nejsou zahrnuté.</p>`;
+}
+
 /* ===== 6. Výpočty ===== */
 function ruleMatch(rule, part){
   if (norm(rule.p) !== norm(part[0]) || norm(rule.k) !== norm(part[1])) return false;
@@ -626,6 +710,12 @@ function planFor(exKey, week){
   return M().lines.map(l => calcLine(l, V.out[l.id] && Object.keys(V.out[l.id]).length ? (V.out[l.id][week] ?? 0) : (M().rules.some(r => r.l === l.id) ? 0 : null)));
 }
 
+function moversNote(from, to, n){
+  if (!STATE.roster) return 'Ověř kvalifikaci ve skill matrix.';
+  const q = qualifiedMovers(from, to);
+  if (!q.length) return `Skill matrix: nikdo z ${lineById(from).name} nemá na ${lineById(to).name} úroveň Z/P – zaškolit, nebo doplnit kvalifikaci ve skill matrix.`;
+  return `Skill matrix – kvalifikovaní (Z/P): ${q.slice(0, 6).join(', ')}${q.length > 6 ? ` a dalších ${q.length - 6}` : ''}${q.length < n ? ` (jen ${q.length} z ${n})` : ''}.`;
+}
 function recommend(exKey, week){
   const plan = planFor(exKey, week); if (!plan) return [];
   const V = volumes(exKey);
@@ -646,7 +736,7 @@ function recommend(exKey, week){
       const n = Math.min(bal[sid], -bal[did]);
       if (n <= 0) continue;
       bal[sid] -= n; bal[did] += n;
-      recos.push({ cls: 'move', icon: '⇄', t: `Přesunout ${n} OP: ${lineById(sid).name} → ${lineById(did).name}`, d: `Po–Pá, rozdělit na směny podle modelu cílové linky. ${lineById(sid).name} zůstane ${bal[sid] > 0 ? 's přebytkem ' + bal[sid] + ' OP' : 'vyrovnaná'}. Ověř kvalifikaci ve skill matrix.`, from: sid, to: did, n });
+      recos.push({ cls: 'move', icon: '⇄', t: `Přesunout ${n} OP: ${lineById(sid).name} → ${lineById(did).name}`, d: `Po–Pá, rozdělit na směny podle modelu cílové linky. ${lineById(sid).name} zůstane ${bal[sid] > 0 ? 's přebytkem ' + bal[sid] + ' OP' : 'vyrovnaná'}. ${moversNote(sid, did, n)}`, from: sid, to: did, n });
     }
   });
   // zbytek
@@ -827,7 +917,7 @@ function renderHistory(){
 
 function renderAll(){
   volCache.clear();
-  weekChips(); renderPlan(); renderReco(); renderOutlook(); renderMaster(); renderParams(); renderHistory();
+  weekChips(); renderPlan(); renderReco(); renderOutlook(); renderMaster(); renderSkills(); renderParams(); renderHistory();
   const lk = latestKey();
   $('railMeta').innerHTML = lk ? `Export ${wkLabel(lk)}<br>Plán ${wkLabel(STATE.planWeek)}<br>${Object.keys(STATE.exports).length} exportů uloženo` : 'Bez dat';
 }
@@ -848,6 +938,8 @@ async function exportXlsx(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), 'Plán týdne');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), 'Doporučení');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s3), 'Výhled');
+  const D = skillData();
+  if (D.people.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Jméno', 'Směna', ...D.cols.map(colName)]].concat(D.people.map(x => [x.name, [...x.shifts].join('/'), ...D.cols.map(c => x.cells[c] ? (x.cells[c].lvl || '·') + (x.cells[c].src === 'ručně' ? ' (ručně)' : '') : '')]))), 'Skill matrix');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s4), 'Metodika');
   XLSX.writeFile(wb, `Plan_FTE_${wkShort(w).replace('/','-')}.xlsx`);
 }
@@ -921,6 +1013,24 @@ const drop = $('drop');
 ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
 $('fileInput').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+$('skillsBody').addEventListener('input', e => {
+  if (e.target.id !== 'skQ') return;
+  VIEW.sk.q = e.target.value; const pos = e.target.selectionStart; renderSkills(); const i = $('skQ'); i.focus(); i.setSelectionRange(pos, pos);
+});
+$('skillsBody').addEventListener('change', e => {
+  if (e.target.id === 'skHome') VIEW.sk.home = e.target.value; else if (e.target.id === 'skMulti') VIEW.sk.multi = e.target.checked; else return;
+  renderSkills();
+});
+$('skillsBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-sk]'); if (!b) return;
+  const S = M().skills ||= [], i = S.findIndex(s => s.key === b.dataset.sk && s.col === b.dataset.col);
+  const cur = i >= 0 ? S[i].lvl : '', nx = SKILLS[SKILLS.indexOf(cur) + 1] || '';
+  if (i >= 0 && !nx) S.splice(i, 1);
+  else if (i >= 0) S[i].lvl = nx;
+  else S.push({ key: b.dataset.sk, name: b.closest('tr').cells[0].textContent, col: b.dataset.col, lvl: nx });
+  save(); renderSkills(); renderReco();
+  document.querySelector(`[data-sk="${CSS.escape(b.dataset.sk)}"][data-col="${CSS.escape(b.dataset.col)}"]`)?.focus();
+});
 const dropR = $('dropRoster');
 ['dragenter','dragover'].forEach(ev => dropR.addEventListener(ev, e => { e.preventDefault(); dropR.classList.add('over'); }));
 ['dragleave','drop'].forEach(ev => dropR.addEventListener(ev, e => { e.preventDefault(); dropR.classList.remove('over'); }));
