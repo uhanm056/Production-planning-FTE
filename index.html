@@ -182,7 +182,8 @@ details.lendbox summary .muted{font-style:italic}
 .rtab-wrap{box-shadow:none;border:1px solid var(--line)} .rtab{table-layout:fixed;min-width:640px} .rtab th:first-child,.rtab td.rpos{width:170px}
 .rtab td{padding:3px 6px;vertical-align:middle;white-space:normal} .rtab td.rpos{font-weight:600;color:var(--th-text);font-size:12.5px}
 .rtab tbody tr:hover{background:transparent} .rtab .pchip{min-height:28px;padding:2px 6px}
-.rtab tr.rgap td{background:var(--crit-soft)} .rposbtn{all:unset;cursor:pointer;font-weight:600;border-bottom:1px dashed var(--line)} .rposbtn:hover,.rposbtn:focus-visible{color:var(--info);border-bottom-color:var(--info)}
+.rtab tr.rgap td{background:var(--crit-soft)} .rh12{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0}
+.rposbtn{all:unset;cursor:pointer;font-weight:600;border-bottom:1px dashed var(--line)} .rposbtn:hover,.rposbtn:focus-visible{color:var(--info);border-bottom-color:var(--info)}
 .rempty{color:var(--muted);font-size:12px;font-style:italic;border:1px dashed var(--line);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;width:100%;text-align:left;font-family:inherit} .rempty:hover{border-color:var(--info);color:var(--info)} .rtab tr.rfree td.rpos{color:var(--warn-text)} .rmiss{color:var(--crit);font-size:12px;font-weight:600}
 .rtab tr.radd td{border-bottom:0} .rtab .padd{width:100%}
 .rabs{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px}
@@ -895,6 +896,10 @@ function needFor(line, week){
 }
 // kde kdo v týdnu je: sestavený rozpis, jinak stálé obsazení (domovská linka a směna)
 const slotOf = (p, week) => STATE.plans[week]?.assign?.[p.id] || { line: p.home, shift: p.shift };
+// délka směny v týdnu: rozpis týdne, jinak stálé nastavení člověka (z času v rozpisu 06–18 / 18–06)
+const h12Of = (p, week) => STATE.plans[week]?.assign?.[p.id]?.h12 ?? !!p.h12;
+const SHIFT_TIME = { 8: { R: '06:00 - 14:00', O: '14:00 - 22:00', N: '22:00 - 06:00' }, 12: { R: '06:00 - 18:00', N: '18:00 - 06:00' } };
+const lenOpts = h12 => `<option value="8" ${h12 ? '' : 'selected'}>8 h</option><option value="12" ${h12 ? 'selected' : ''}>12 h</option>`;
 const posThisWeek = (p, week) => STATE.plans[week]?.assign?.[p.id]?.pos ?? p.pos ?? '';
 // lidé k dispozici za den na lince (přítomní, bez TL/TR); bez lidí v aplikaci platí ručně zadané číslo
 function availOf(line, week){
@@ -953,7 +958,7 @@ function personChip(p, week, lineKey, inTable){
     <span class="sk ${lvl || 'x'}">${lvl || '·'}</span><span class="pn">${esc(p.name)}</span>
     ${p.pos && !inTable ? `<span class="pp">${esc(p.pos)}</span>` : ''}
     ${a.moved ? `<span class="badge b">z ${esc(colName(a.from))}${a.fromShift && a.fromShift !== a.shift ? ' ' + a.fromShift : ''}</span>` : ''}
-    ${a.locked ? '<span class="badge a">ručně</span>' : ''}${p.h12 ? '<span class="pp">12h</span>' : ''}
+    ${a.locked ? '<span class="badge a">ručně</span>' : ''}${h12Of(p, week) ? '<span class="badge b">12h</span>' : ''}
     ${ab.length && !isAbsent(p, week) ? `<span class="badge a">částečně chybí</span>` : ''}</button>`;
 }
 function renderRoster(){
@@ -988,7 +993,8 @@ function renderRoster(){
     const tail = k => k === 'Výpomoc (přesun)' ? 2 : k === 'Bez pozice' ? 1 : 0;
     const order = [...groups.values()].sort((a, b) => tail(a.k) - tail(b.k) || a.row - b.row || a.k.localeCompare(b.k, 'cs'));
     const hd = sh => { const got = r.shifts[sh].length, need = n ? n[sh] || 0 : null, g = need == null ? 0 : got - need;
-      return `<th>${SHIFT_TXT[sh]} <span class="badge ${need == null ? 'b' : g < 0 ? 'r' : g > 0 ? 'a' : 'g'}">${got}${need == null ? '' : ' / ' + need}${g < 0 ? ` · chybí ${-g}` : g > 0 ? ` · +${g}` : ''}</span></th>`; };
+      const n12 = r.shifts[sh].filter(p => h12Of(p, w)).length;
+      return `<th>${SHIFT_TXT[sh]} <span class="badge ${need == null ? 'b' : g < 0 ? 'r' : g > 0 ? 'a' : 'g'}">${got}${need == null ? '' : ' / ' + need}${g < 0 ? ` · chybí ${-g}` : g > 0 ? ` · +${g}` : ''}</span>${n12 ? ` <span class="rh12">z toho 12 h: ${n12}</span>` : ''}</th>`; };
     let rows = '';
     order.forEach(g => {
       shown.forEach(sh => (g.by[sh] ||= []).sort((a, b) => (a.row ?? 1e9) - (b.row ?? 1e9) || a.name.localeCompare(b.name, 'cs')));
@@ -1023,13 +1029,13 @@ function openPerson(id){
     <h2 style="margin-top:0">${esc(p.name)}</h2>
     <p class="note">Stálé: ${esc(colName(p.home))} · ${SHIFT_TXT[p.shift] || esc(p.shift)}${p.pos ? ' · ' + esc(p.pos) : ''} · zdroj ${esc(p.src || 'aplikace')}</p>
     <h3>Tento týden (${wkLabel(w)})</h3>
-    <div class="frow"><label>Linka<select class="cell" id="fLine">${lineOpts(a.line)}</select></label><label>Směna<select class="cell" id="fShift">${shiftOpts(a.shift)}</select></label><label>Pozice / stroj<select class="cell" id="fWPos">${posOpts(a.line, posThisWeek(p, w))}</select></label></div>
+    <div class="frow"><label>Linka<select class="cell" id="fLine">${lineOpts(a.line)}</select></label><label>Směna<select class="cell" id="fShift">${shiftOpts(a.shift)}</select></label><label>Pozice / stroj<select class="cell" id="fWPos">${posOpts(a.line, posThisWeek(p, w))}</select></label><label>Délka směny<select class="cell" id="fWLen">${lenOpts(h12Of(p, w))}</select></label></div>
     <p class="note">Změna platí jen pro ${wkLabel(w)} a zamkne se (nové sestavení ji nepřepíše). Kvalifikace na vybrané lince: <b id="fSkill">${skillOf(p, a.line) || 'žádná'}</b>.</p>
     <h3>Nepřítomnost</h3>
     <div class="absl">${(p.absences || []).map((x, i) => `<div class="absr"><span>${esc(x.type)}${x.from ? ` · ${x.from}${x.to && x.to !== x.from ? ' – ' + x.to : ''}` : ' · bez data'}${x.note ? ' · ' + esc(x.note) : ''}</span><button type="button" class="btn danger small" data-delabs="${i}">Odebrat</button></div>`).join('') || '<span class="note">žádná</span>'}</div>
     <div class="frow"><label>Typ<select class="cell" id="fAbsT">${ABS_TYPES.map(t => `<option>${t}</option>`).join('')}</select></label><label>Od<input class="cell" type="date" id="fAbsF" value="${weekDays(w)[0]}"></label><label>Do<input class="cell" type="date" id="fAbsTo" value="${weekDays(w)[4]}"></label><button type="button" class="btn secondary small" id="fAbsAdd">Přidat</button></div>
     <details><summary class="note">Trvalá změna (domovská linka, směna, pozice)</summary>
-      <div class="frow"><label>Domovská linka<select class="cell" id="fHome">${lineOpts(p.home)}</select></label><label>Směna<select class="cell" id="fHShift">${shiftOpts(p.shift)}</select></label><label>Pozice<input class="cell" id="fPos" list="fPosList" value="${esc(p.pos || '')}"><datalist id="fPosList">${(lineById(p.home)?.positions || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist></label></div>
+      <div class="frow"><label>Domovská linka<select class="cell" id="fHome">${lineOpts(p.home)}</select></label><label>Směna<select class="cell" id="fHShift">${shiftOpts(p.shift)}</select></label><label>Délka směny<select class="cell" id="fHLen">${lenOpts(!!p.h12)}</select></label><label>Pozice<input class="cell" id="fPos" list="fPosList" value="${esc(p.pos || '')}"><datalist id="fPosList">${(lineById(p.home)?.positions || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist></label></div>
       <div class="btns"><button type="button" class="btn secondary small" id="fHomeSave">Uložit trvale</button><button type="button" class="btn danger small" id="fDel">Odebrat člověka</button></div></details>
     <div class="btns" style="margin-top:1rem;justify-content:flex-end"><button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="fSave">Uložit pro tento týden</button></div>
   </form>`;
@@ -1039,7 +1045,7 @@ function openAdd(lineId, shift){
   const dl = $('dlg');
   dl.innerHTML = `<form method="dialog" id="aForm"><h2 style="margin-top:0">Přidat člověka</h2>
     <div class="frow"><label>Jméno<input class="cell" id="aName" placeholder="Příjmení Jméno" required></label></div>
-    <div class="frow"><label>Linka<select class="cell" id="aLine">${lineOpts(lineId)}</select></label><label>Směna<select class="cell" id="aShift">${shiftOpts(shift)}</select></label></div>
+    <div class="frow"><label>Linka<select class="cell" id="aLine">${lineOpts(lineId)}</select></label><label>Směna<select class="cell" id="aShift">${shiftOpts(shift)}</select></label><label>Délka směny<select class="cell" id="aLen">${lenOpts(false)}</select></label></div>
     <div class="frow"><label>Pozice<input class="cell" id="aPos"></label><label>Úroveň na lince<select class="cell" id="aSkill"><option value="">–</option>${SKILLS.slice().reverse().map(s => `<option value="${s}">${s} – ${SKILL_TXT[s]}</option>`).join('')}</select></label></div>
     <p class="note" id="aErr"></p>
     <div class="btns" style="justify-content:flex-end"><button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="aSave">Přidat</button></div></form>`;
@@ -1107,7 +1113,7 @@ async function onDialogClick(e){
   const pf = $('pForm'), id = pf?.dataset.id, p = id && STATE.people[id];
   if (t.id === 'fSave' && p){
     await ensurePlan(w);
-    STATE.plans[w].assign[id] = { line: $('fLine').value, shift: $('fShift').value, pos: $('fWPos').value, locked: true, moved: $('fLine').value !== p.home || $('fShift').value !== p.shift, from: p.home, fromShift: p.shift };
+    STATE.plans[w].assign[id] = { line: $('fLine').value, shift: $('fShift').value, pos: $('fWPos').value, h12: $('fWLen').value === '12', locked: true, moved: $('fLine').value !== p.home || $('fShift').value !== p.shift, from: p.home, fromShift: p.shift };
     await savePlan(w, id); dl.close(); renderAll(); toast(`${p.name}: ${colName($('fLine').value)}, ${SHIFT_TXT[$('fShift').value]} (${wkShort(w)})`);
   } else if (t.id === 'fAbsAdd' && p){
     const from = $('fAbsF').value, to = $('fAbsTo').value || from; if (!from) return;
@@ -1116,7 +1122,8 @@ async function onDialogClick(e){
   } else if (t.dataset.delabs != null && p){
     p.absences.splice(+t.dataset.delabs, 1); await savePeople([id]); openPerson(id); renderAll();
   } else if (t.id === 'fHomeSave' && p){
-    Object.assign(p, { home: $('fHome').value, shift: $('fHShift').value, pos: $('fPos').value.trim(), updatedAt: new Date().toISOString() });
+    const h12 = $('fHLen').value === '12';
+    Object.assign(p, { home: $('fHome').value, shift: $('fHShift').value, pos: $('fPos').value.trim(), h12, time: SHIFT_TIME[h12 ? 12 : 8][$('fHShift').value] || p.time, updatedAt: new Date().toISOString() });
     await savePeople([id]); dl.close(); renderAll(); toast(`${p.name}: domovská linka ${colName(p.home)}`);
   } else if (t.id === 'fDel' && p){
     if (!armed(t)) return;
@@ -1126,7 +1133,7 @@ async function onDialogClick(e){
     if (!name){ $('aErr').textContent = 'Vyplň jméno.'; return; }
     if (STATE.people[nid]){ $('aErr').textContent = 'Člověk s tímto jménem už v aplikaci je – najdi ho v rozpisu.'; return; }
     const line = $('aLine').value, sk = $('aSkill').value;
-    STATE.people[nid] = { id: nid, name, role: 'OP', home: line, shift: $('aShift').value, crew: SHIFT_TXT[$('aShift').value], pos: $('aPos').value.trim(), time: '', h12: false, slot: false, skills: sk ? { [line]: sk } : {}, man: {}, also: [], absences: [], src: 'aplikace', updatedAt: new Date().toISOString() };
+    STATE.people[nid] = { id: nid, name, role: 'OP', home: line, shift: $('aShift').value, crew: SHIFT_TXT[$('aShift').value], pos: $('aPos').value.trim(), time: SHIFT_TIME[$('aLen').value][$('aShift').value] || '', h12: $('aLen').value === '12', slot: false, skills: sk ? { [line]: sk } : {}, man: {}, also: [], absences: [], src: 'aplikace', updatedAt: new Date().toISOString() };
     await savePeople([nid]); dl.close(); renderAll(); toast(`Přidáno: ${name}`);
   } else if (t.id === 'nSave' || t.id === 'nReset'){
     const l = lineById($('nForm').dataset.id);
