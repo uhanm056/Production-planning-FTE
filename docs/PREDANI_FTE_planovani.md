@@ -30,5 +30,5 @@ Single-file HTML, cdnjs jen, detekce sloupců podle hlavičky, čeština s diakr
 2. Ověřit lidi k dispozici (Gemba / potvrzení TL) a „Sdílí lidi s“.
 3. ~~Import rozpisů směn přímo do aplikace~~ – hotovo (Import → Import rozpisů směn, jednotná šablona PL-SM-FR-G09-09). Zbývá: Prefix L1/L2 (rozpis nemá rozdělení, posádky A/B) a SK336 (nový rozpis 9/6/0 = 15 OP vs. dřív 9/2/9 = 20 – ověřit).
 4. Napojení Summary PLANA1 a DLE (skutečnost vs. plán, gap v €), sazby DL/IDL/agentura.
-5. Skill matrix pro přesuny (kdo může na kterou linku), víkendový rozpis.
+5. ~~Skill matrix~~ – hotovo (pohled Skill matrix: z rozpisů SKILL LEVEL Z/P/T/N + ručně doplněné kvalifikace na jiných linkách, v Doporučení se u přesunu vypíšou kvalifikovaní Z/P). IMM, OV51/64 a Prefix nemají v rozpisu vyplněný SKILL LEVEL → doplnit v rozpisech. Zbývá víkendový rozpis.
 6. Případně sdílení přes SharePoint / Firebase RTDB.

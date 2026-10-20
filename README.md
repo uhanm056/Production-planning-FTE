@@ -9,4 +9,4 @@ odvolávky → volume po lince → směny → OP → porovnání s lidmi k dispo
 - `docs/PREDANI_FTE_planovani.md` – předávací dokument: rozhodnutí, otevřené body a další kroky.
 
 ## Pravidla
-Single-file HTML, knihovny jen z cdnjs, detekce sloupců podle hlavičky, čeština s diakritikou, navy `#003B7A`, RAG W_n vs W_n−1 (±5 %), G463 Prefix L1/L2 vždy zvlášť, localStorage v try/catch, žádná vymyšlená data (chybějící normy zůstávají prázdné).
+Vizuál podle MEC Analyzer Planá (navy header s logem, úvodní dlaždice, pilulková navigace). Single-file HTML, knihovny jen z cdnjs, detekce sloupců podle hlavičky, čeština s diakritikou, navy `#003B7A`, RAG W_n vs W_n−1 (±5 %), G463 Prefix L1/L2 vždy zvlášť, localStorage v try/catch, žádná vymyšlená data (chybějící normy zůstávají prázdné).
