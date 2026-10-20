@@ -1945,8 +1945,12 @@ if (STATE.roster?.groups && !hasPeople()){
 delete M().skills; delete STATE.roster;
 { const imm = lineById('imm'); if (imm && !imm.positions) imm.positions = DEFAULT_MASTER().lines.find(l => l.id === 'imm').positions; }
 // předvyplněná verze souboru (data vložená při sestavení): načíst, jen když prohlížeč nemá lidi ani exporty
-if (!hasPeople() && !Object.keys(STATE.exports).length && document.getElementById('seedData')){
-  try{ Object.assign(STATE, JSON.parse(document.getElementById('seedData').textContent)); persistLocal(); }catch(e){ console.warn('seed', e); }
+if (document.getElementById('seedData')){
+  try{
+    const sd = JSON.parse(document.getElementById('seedData').textContent);
+    if (!hasPeople() && !Object.keys(STATE.exports).length){ Object.assign(STATE, sd); persistLocal(); }
+    else if (sd.dle && !STATE.dle){ STATE.dle = sd.dle; persistLocal(); }   // routing doplnit i do už používaného prohlížeče
+  }catch(e){ console.warn('seed', e); }
 }
 fixPlanWeek();
 renderAll();
