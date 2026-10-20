@@ -170,8 +170,16 @@ details.lendbox summary .muted{font-style:italic}
 .sk-filter{align-items:center;flex-wrap:wrap;margin-bottom:.6rem}
 .sk-legend{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem;font-size:.85rem;color:var(--muted);margin:.25rem 0 .5rem} .sk-legend .sk{margin-left:.6rem} .sk-legend .sk:first-child{margin-left:0}
 .sk-filter .cell{width:auto;flex:0 1 auto}
-.rline{margin-bottom:12px;border-top-color:var(--good)} .rline.bad{border-top-color:var(--crit)}
-.rtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px} .rtop h3{margin:0;font-size:15px} .rtop .btns{align-items:center}
+.rline{margin-bottom:8px;border-top:0;border-left:5px solid var(--good);padding:10px 14px} .rline.bad{border-left-color:var(--crit)}
+.rline>summary{list-style:none;cursor:pointer;margin:0} .rline>summary::-webkit-details-marker{display:none}
+.rline>summary:focus-visible{outline:2px solid var(--info);outline-offset:4px;border-radius:6px}
+.rname{display:flex;align-items:center;gap:8px;min-width:180px} .rchev{color:var(--muted);transition:transform .15s;font-size:13px} .rline[open] .rchev{transform:rotate(90deg)}
+.rsum{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1}
+.rsp{border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.rsp.g{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent)} .rsp.r{color:var(--crit);background:var(--crit-soft);border-color:transparent} .rsp.a{color:var(--warn-text);background:var(--warn-soft);border-color:transparent} .rsp.b{color:var(--info)}
+.rbody{margin-top:10px} .rtools{align-items:center;margin:4px 0 10px}
+@media (prefers-reduced-motion:reduce){.rchev{transition:none}}
+.rtop{display:flex;justify-content:space-between;align-items:center;gap:10px 14px;flex-wrap:wrap} .rtop h3{margin:0;font-size:15px} .rtop .btns{align-items:center}
 .rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
 .rcol{display:flex;flex-direction:column;gap:4px;min-width:0} .rhd{display:flex;justify-content:space-between;align-items:center;gap:6px;padding-bottom:4px;border-bottom:1px solid var(--line);margin-bottom:2px;font-size:12.5px}
 .pchip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:4px 8px;font:inherit;font-size:12.5px;cursor:pointer;min-height:32px;width:100%}
@@ -975,6 +983,8 @@ function personChip(p, week, lineKey, inTable){
     ${a.locked ? '<span class="badge a">ručně</span>' : ''}${h12Of(p, week) && !inTable ? '<span class="b12">12 h</span>' : ''}
     ${ab.length && !isAbsent(p, week) ? `<span class="badge a">částečně chybí</span>` : ''}</button>`;
 }
+// rozbalené linky v rozpisu – jen pro tohoto uživatele (prohlížeč)
+const ROSTER_OPEN = new Set(LS.get(APP_KEY + '.open') || []);
 function renderRoster(){
   const el = $('rosterBody'), w = STATE.planWeek;
   $('rosterTitle').textContent = w ? `Rozpis ${wkLabel(w)}` : 'Rozpis týdne';
@@ -996,12 +1006,13 @@ function renderRoster(){
       <div class="card kpi"><div class="lbl">Přebytek OP</div><div class="val">${fmt(surplus)}</div><div class="sub">nad potřebu linek</div></div>
       <div class="card kpi k12"><div class="lbl">Na 12 h</div><div class="val">${fmt(on12)}</div><div class="sub">z ${fmt(present)} lidí (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)}</div></div>
     </div>
-    <details class="card r12sum" open><summary><span class="r12big">${fmt(on12)}</span><span><b>lidí na 12 h za výrobu</b><br><span class="note">z ${fmt(present)} v rozpisu (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)} · rozpis po procesech níže</span></span></summary>
+    <details class="card r12sum" data-line="__12h"${ROSTER_OPEN.has('__12h') ? ' open' : ''}><summary><span class="r12big">${fmt(on12)}</span><span><b>lidí na 12 h za výrobu</b><br><span class="note">z ${fmt(present)} v rozpisu (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)} · klikni pro rozpis po procesech</span></span></summary>
       <div class="tbl-wrap" style="box-shadow:none;margin-top:8px"><table><thead><tr><th>Proces</th><th class="num">Lidé</th><th class="num">12 h</th><th class="num">8 h</th><th>Podíl 12 h</th><th class="num">R 12 h</th><th class="num">O 12 h</th><th class="num">N 12 h</th></tr></thead><tbody>
       ${S.map(r => { const all = SHIFTS.flatMap(sh => r.shifts[sh]); if (!all.length) return ''; const t = all.filter(p => h12Of(p, w)).length, c = sh => r.shifts[sh].filter(p => h12Of(p, w)).length;
         return `<tr><td>${esc(r.name)}</td><td class="num">${all.length}</td><td class="num"><b>${t}</b></td><td class="num">${all.length - t}</td><td><div class="p12"><i style="width:${t / all.length * 100}%"></i></div><span class="p12v">${fmt(t / all.length * 100)} %</span></td><td class="num">${c('R') || ''}</td><td class="num">${c('O') || ''}</td><td class="num">${c('N') || ''}</td></tr>`; }).join('')}
       <tr class="tot"><td><b>Výroba celkem</b></td><td class="num"><b>${fmt(present)}</b></td><td class="num"><b>${fmt(on12)}</b></td><td class="num"><b>${fmt(present - on12)}</b></td><td><div class="p12"><i style="width:${present ? on12 / present * 100 : 0}%"></i></div><span class="p12v"><b>${present ? fmt(on12 / present * 100) : 0} %</b></span></td><td></td><td></td><td></td></tr>
       </tbody></table></div></details>`;
+  h += `<div class="btns rtools"><button class="btn secondary small" id="rOpenAll">Rozbalit vše</button><button class="btn secondary small" id="rCloseAll">Sbalit vše</button><span class="note">Kliknutím na pruh linku rozbalíš nebo zavřeš.</span></div>`;
   h += S.map(r => {
     const line = lineById(r.key), n = r.need;
     const srcTxt = !n ? 'bez potřeby' : n.src === 'norma' ? 'potřeba z normy' : n.src === 'ručně' ? 'potřeba zadaná ručně' : `potřeba = obsazení z rozpisu ${(STATE.rosterMeta?.weeks || []).map(x => 'CW' + x).join(', ')}`;
@@ -1026,15 +1037,20 @@ function renderRoster(){
     if (n && shown.some(sh => (n[sh] || 0) > r.shifts[sh].length)) rows += `<tr class="rgap"><td class="rpos">Chybí do potřeby</td>${shown.map(sh => { const m = (n[sh] || 0) - r.shifts[sh].length; return `<td colspan="2">${m > 0 ? `<span class="rmiss">chybí ${m} ${pl(m, 'člověk', 'lidé', 'lidí')}</span>` : ''}</td>`; }).join('')}</tr>`;
     if (line) rows += `<tr class="radd"><td></td>${shown.map(sh => `<td colspan="2"><button class="padd" data-add="${esc(r.key)}" data-shift="${sh}">+ přidat člověka</button></td>`).join('')}</tr>`;
     const table = shown.length ? `<div class="tbl-wrap rtab-wrap"><table class="rtab"><colgroup><col class="cpos">${shown.map(() => '<col><col class="clen">').join('')}</colgroup><thead><tr><th>Pozice</th>${shown.map(hd).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="note">Na lince zatím nikdo není.</p>';
-    return `<div class="card rline ${r.missing ? 'bad' : ''}">
-      <div class="rtop"><div><h3>${esc(r.name)}</h3><span class="note">${esc(srcTxt)}</span></div>
-        ${(() => { const all = SHIFTS.flatMap(sh => r.shifts[sh]), t = all.filter(p => h12Of(p, w)).length; return all.length ? `<div class="r12"><span class="b12 big">12 h: ${t} / ${all.length} · ${fmt(t / all.length * 100)} %</span>${t ? `<span class="note">${SHIFTS.filter(sh => r.shifts[sh].some(p => h12Of(p, w))).map(sh => `${SHIFT_TXT[sh]} ${r.shifts[sh].filter(p => h12Of(p, w)).length}`).join(' · ')}</span>` : ''}</div>` : ''; })()}
+    const all = SHIFTS.flatMap(sh => r.shifts[sh]), t12 = all.filter(p => h12Of(p, w)).length;
+    const mv = all.filter(p => slotOf(p, w).moved).length;
+    const pills = shown.map(sh => { const got = r.shifts[sh].length, need = n ? n[sh] || 0 : null, g = need == null ? 0 : got - need;
+      return `<span class="rsp ${need == null ? '' : g < 0 ? 'r' : g > 0 ? 'a' : 'g'}">${sh} ${got}${need == null ? '' : '/' + need}</span>`; }).join('');
+    return `<details class="card rline ${r.missing ? 'bad' : ''}" data-line="${esc(r.key)}"${ROSTER_OPEN.has(r.key) ? ' open' : ''}>
+      <summary class="rtop"><div class="rname"><span class="rchev" aria-hidden="true">▸</span><div><h3>${esc(r.name)}</h3><span class="note">${esc(srcTxt)}</span></div></div>
+        <div class="rsum">${pills}${all.length ? `<span class="b12">12 h: ${t12}/${all.length}</span>` : ''}${r.absent.length ? `<span class="rsp">nepřít. ${r.absent.length}</span>` : ''}${mv ? `<span class="rsp b">přesuny ${mv}</span>` : ''}</div>
         <div class="btns">${r.missing ? `<span class="badge r">chybí ${r.missing}</span>` : n ? '<span class="badge g">obsazeno</span>' : ''}${r.surplus && n ? `<span class="badge a">přebytek ${r.surplus}</span>` : ''}
-        ${line ? `<button class="btn secondary small" data-need="${esc(r.key)}">Potřeba na směnu</button>` : ''}</div></div>
+        ${line ? `<button class="btn secondary small" data-need="${esc(r.key)}">Potřeba na směnu</button>` : ''}</div></summary>
+      <div class="rbody">
       ${table}
       ${r.other.length ? `<div class="note" style="margin-top:.4rem">Jiné směny: ${r.other.map(p => personChip(p, w, r.key)).join('')}</div>` : ''}
       ${r.absent.length ? `<div class="rabs"><b>Nepřítomní:</b> ${r.absent.map(p => `<button class="pchip absent" data-person="${esc(p.id)}"><span class="pn">${esc(p.name)}</span><span class="pp">${esc(absencesIn(p, w).map(a => a.type.split(' /')[0] + (a.to ? ' do ' + d(a.to) : '')).join(', '))}</span></button>`).join('')}</div>` : ''}
-    </div>`;
+      </div></details>`;
   }).join('');
   const undated = P.flatMap(p => (p.absences || []).filter(a => !a.from).map(a => `${esc(p.name)} – ${esc(a.type)}${a.note ? ': ' + esc(a.note) : ''}`));
   if (undated.length) h += `<details class="card" style="margin-top:12px"><summary class="note">Nepřítomnosti bez data (${undated.length}) – doplň od/do u člověka, jinak se nepočítají</summary><p class="note">${undated.join(' · ')}</p></details>`;
@@ -1610,9 +1626,18 @@ $('rosterBody').addEventListener('click', e => {
   if (ln){ (async () => { const w = STATE.planWeek, p = STATE.people[ln.dataset.len]; await ensurePlan(w); const a = STATE.plans[w].assign[p.id] ||= { line: p.home, shift: p.shift }; a.h12 = !h12Of(p, w); await savePlan(w, p.id); renderAll(); })(); return; }
   const rn = e.target.closest('[data-rename]'); if (rn){ openRename(rn.dataset.rename, rn.dataset.pos); return; }
   const sl = e.target.closest('[data-slot]'); if (sl){ openSlot(sl.dataset.slot, sl.dataset.shift, sl.dataset.pos); return; }
-  const n = e.target.closest('[data-need]'); if (n) openNeed(n.dataset.need);
+  const n = e.target.closest('[data-need]'); if (n){ e.preventDefault(); openNeed(n.dataset.need); return; }
+  if (e.target.id === 'rOpenAll' || e.target.id === 'rCloseAll'){
+    const op = e.target.id === 'rOpenAll';
+    document.querySelectorAll('#rosterBody details.rline').forEach(x => { x.open = op; op ? ROSTER_OPEN.add(x.dataset.line) : ROSTER_OPEN.delete(x.dataset.line); });
+    LS.set(APP_KEY + '.open', [...ROSTER_OPEN]);
+  }
 });
 $('dlg').addEventListener('click', onDialogClick);
+$('rosterBody').addEventListener('toggle', e => {
+  const x = e.target; if (!x.matches?.('details[data-line]')) return;
+  x.open ? ROSTER_OPEN.add(x.dataset.line) : ROSTER_OPEN.delete(x.dataset.line); LS.set(APP_KEY + '.open', [...ROSTER_OPEN]);
+}, true);
 $('dlg').addEventListener('change', e => { if (e.target.id === 'fLine'){ const p = STATE.people[$('pForm').dataset.id]; $('fSkill').textContent = skillOf(p, e.target.value) || 'žádná'; $('fWPos').innerHTML = posOpts(e.target.value, ''); } });
 $('btnPersonAdd').onclick = () => openAdd(M().lines[0]?.id, 'R');
 $('btnPlanGen').onclick = async () => {
