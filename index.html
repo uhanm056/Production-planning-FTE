@@ -185,8 +185,14 @@ details.lendbox summary .muted{font-style:italic}
 .rtab tr.rgap td{background:var(--crit-soft)} .rtab col.cpos{width:170px} .rtab col.clen{width:58px} .rtab td.rlen{padding-left:0}
 .lenbtn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:2px 8px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
 .lenbtn.on{background:var(--navy-soft);border-color:var(--info);color:var(--info)} .lenbtn:hover{border-color:var(--info)}
-.r12{font-size:12.5px;color:var(--muted);align-self:center} .r12 b{color:var(--text)}
-.r12sum{margin-bottom:12px;border-top-color:var(--navy-2)} .r12sum summary{cursor:pointer} .r12sum tr.tot td{border-top:2px solid var(--navy)}
+.r12{display:flex;flex-direction:column;align-items:flex-start;gap:2px;align-self:center}
+.b12{display:inline-block;background:var(--info);color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;white-space:nowrap}
+.b12.big{font-size:13.5px;padding:4px 12px}
+.r12sum summary{display:flex;align-items:center;gap:14px;list-style:none} .r12sum summary::-webkit-details-marker{display:none}
+.r12big{font-size:40px;font-weight:800;color:var(--info);line-height:1;font-variant-numeric:tabular-nums}
+.p12{display:inline-block;vertical-align:middle;width:110px;height:10px;background:var(--th);border-radius:5px;overflow:hidden;margin-right:8px} .p12 i{display:block;height:100%;background:var(--info)}
+.p12v{font-variant-numeric:tabular-nums}
+.r12sum{margin-bottom:12px;border-top-color:var(--info);border-top-width:4px} .r12sum summary{cursor:pointer} .r12sum tr.tot td{border-top:2px solid var(--navy)}
 .rh12{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0}
 .rposbtn{all:unset;cursor:pointer;font-weight:600;border-bottom:1px dashed var(--line)} .rposbtn:hover,.rposbtn:focus-visible{color:var(--info);border-bottom-color:var(--info)}
 .rempty{color:var(--muted);font-size:12px;font-style:italic;border:1px dashed var(--line);background:transparent;border-radius:8px;padding:4px 8px;cursor:pointer;width:100%;text-align:left;font-family:inherit} .rempty:hover{border-color:var(--info);color:var(--info)} .rtab tr.rfree td.rpos{color:var(--warn-text)} .rmiss{color:var(--crit);font-size:12px;font-weight:600}
@@ -988,11 +994,11 @@ function renderRoster(){
       <div class="card kpi"><div class="lbl">Přebytek OP</div><div class="val">${fmt(surplus)}</div><div class="sub">nad potřebu linek</div></div>
       <div class="card kpi"><div class="lbl">Na 12 h</div><div class="val">${fmt(on12)}</div><div class="sub">z ${fmt(present)} lidí (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)}</div></div>
     </div>
-    <details class="card r12sum"><summary><b>12 h po procesech</b> <span class="note">– celkem za výrobu ${fmt(on12)} z ${fmt(present)}</span></summary>
-      <div class="tbl-wrap" style="box-shadow:none;margin-top:8px"><table><thead><tr><th>Proces</th><th class="num">Lidé</th><th class="num">12 h</th><th class="num">8 h</th><th class="num">Podíl 12 h</th><th class="num">R 12 h</th><th class="num">O 12 h</th><th class="num">N 12 h</th></tr></thead><tbody>
+    <details class="card r12sum" open><summary><span class="r12big">${fmt(on12)}</span><span><b>lidí na 12 h za výrobu</b><br><span class="note">z ${fmt(present)} v rozpisu (${present ? fmt(on12 / present * 100) : 0} %) · 8 h: ${fmt(present - on12)} · rozpis po procesech níže</span></span></summary>
+      <div class="tbl-wrap" style="box-shadow:none;margin-top:8px"><table><thead><tr><th>Proces</th><th class="num">Lidé</th><th class="num">12 h</th><th class="num">8 h</th><th>Podíl 12 h</th><th class="num">R 12 h</th><th class="num">O 12 h</th><th class="num">N 12 h</th></tr></thead><tbody>
       ${S.map(r => { const all = SHIFTS.flatMap(sh => r.shifts[sh]); if (!all.length) return ''; const t = all.filter(p => h12Of(p, w)).length, c = sh => r.shifts[sh].filter(p => h12Of(p, w)).length;
-        return `<tr><td>${esc(r.name)}</td><td class="num">${all.length}</td><td class="num"><b>${t}</b></td><td class="num">${all.length - t}</td><td class="num">${fmt(t / all.length * 100)} %</td><td class="num">${c('R') || ''}</td><td class="num">${c('O') || ''}</td><td class="num">${c('N') || ''}</td></tr>`; }).join('')}
-      <tr class="tot"><td><b>Výroba celkem</b></td><td class="num"><b>${fmt(present)}</b></td><td class="num"><b>${fmt(on12)}</b></td><td class="num"><b>${fmt(present - on12)}</b></td><td class="num"><b>${present ? fmt(on12 / present * 100) : 0} %</b></td><td></td><td></td><td></td></tr>
+        return `<tr><td>${esc(r.name)}</td><td class="num">${all.length}</td><td class="num"><b>${t}</b></td><td class="num">${all.length - t}</td><td><div class="p12"><i style="width:${t / all.length * 100}%"></i></div><span class="p12v">${fmt(t / all.length * 100)} %</span></td><td class="num">${c('R') || ''}</td><td class="num">${c('O') || ''}</td><td class="num">${c('N') || ''}</td></tr>`; }).join('')}
+      <tr class="tot"><td><b>Výroba celkem</b></td><td class="num"><b>${fmt(present)}</b></td><td class="num"><b>${fmt(on12)}</b></td><td class="num"><b>${fmt(present - on12)}</b></td><td><div class="p12"><i style="width:${present ? on12 / present * 100 : 0}%"></i></div><span class="p12v"><b>${present ? fmt(on12 / present * 100) : 0} %</b></span></td><td></td><td></td><td></td></tr>
       </tbody></table></div></details>`;
   h += S.map(r => {
     const line = lineById(r.key), n = r.need;
@@ -1008,7 +1014,7 @@ function renderRoster(){
     const order = [...groups.values()].sort((a, b) => tail(a.k) - tail(b.k) || a.row - b.row || a.k.localeCompare(b.k, 'cs'));
     const hd = sh => { const got = r.shifts[sh].length, need = n ? n[sh] || 0 : null, g = need == null ? 0 : got - need;
       const n12 = r.shifts[sh].filter(p => h12Of(p, w)).length;
-      return `<th colspan="2">${SHIFT_TXT[sh]} <span class="badge ${need == null ? 'b' : g < 0 ? 'r' : g > 0 ? 'a' : 'g'}">${got}${need == null ? '' : ' / ' + need}${g < 0 ? ` · chybí ${-g}` : g > 0 ? ` · +${g}` : ''}</span>${n12 ? ` <span class="rh12">z toho 12 h: ${n12}</span>` : ''}</th>`; };
+      return `<th colspan="2">${SHIFT_TXT[sh]} <span class="badge ${need == null ? 'b' : g < 0 ? 'r' : g > 0 ? 'a' : 'g'}">${got}${need == null ? '' : ' / ' + need}${g < 0 ? ` · chybí ${-g}` : g > 0 ? ` · +${g}` : ''}</span>${n12 ? ` <span class="b12">12 h: ${n12}</span>` : ''}</th>`; };
     let rows = '';
     order.forEach(g => {
       shown.forEach(sh => (g.by[sh] ||= []).sort((a, b) => (a.row ?? 1e9) - (b.row ?? 1e9) || a.name.localeCompare(b.name, 'cs')));
@@ -1020,7 +1026,7 @@ function renderRoster(){
     const table = shown.length ? `<div class="tbl-wrap rtab-wrap"><table class="rtab"><colgroup><col class="cpos">${shown.map(() => '<col><col class="clen">').join('')}</colgroup><thead><tr><th>Pozice</th>${shown.map(hd).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="note">Na lince zatím nikdo není.</p>';
     return `<div class="card rline ${r.missing ? 'bad' : ''}">
       <div class="rtop"><div><h3>${esc(r.name)}</h3><span class="note">${esc(srcTxt)}</span></div>
-        ${(() => { const all = SHIFTS.flatMap(sh => r.shifts[sh]), t = all.filter(p => h12Of(p, w)).length; return all.length ? `<div class="r12"><b>${t}</b> z ${all.length} na 12 h${t ? ' (' + SHIFTS.filter(sh => r.shifts[sh].some(p => h12Of(p, w))).map(sh => `${sh} ${r.shifts[sh].filter(p => h12Of(p, w)).length}`).join(' · ') + ')' : ''}</div>` : ''; })()}
+        ${(() => { const all = SHIFTS.flatMap(sh => r.shifts[sh]), t = all.filter(p => h12Of(p, w)).length; return all.length ? `<div class="r12"><span class="b12 big">12 h: ${t} / ${all.length} · ${fmt(t / all.length * 100)} %</span>${t ? `<span class="note">${SHIFTS.filter(sh => r.shifts[sh].some(p => h12Of(p, w))).map(sh => `${SHIFT_TXT[sh]} ${r.shifts[sh].filter(p => h12Of(p, w)).length}`).join(' · ')}</span>` : ''}</div>` : ''; })()}
         <div class="btns">${r.missing ? `<span class="badge r">chybí ${r.missing}</span>` : n ? '<span class="badge g">obsazeno</span>' : ''}${r.surplus && n ? `<span class="badge a">přebytek ${r.surplus}</span>` : ''}
         ${line ? `<button class="btn secondary small" data-need="${esc(r.key)}">Potřeba na směnu</button>` : ''}</div></div>
       ${table}
@@ -1524,7 +1530,7 @@ function renderHome(){
     h += tile({ title: 'Rozpis týdne', value: fmt(present), unit: 'OP', label: `lidé v rozpisu ${wkLabel(w)} (bez TL/TR)`, go: 'roster', tone: !pl0 ? 'amber' : miss ? 'red' : 'green',
       badge: !pl0 ? 'nesestaven' : miss ? `chybí ${miss} OP` : 'obsazeno', badgeTone: !pl0 ? 'a' : miss ? 'r' : 'g',
       viz: worst.length ? miniBars(worst.map(r => ({ n: r.name, v: r.missing, c: 'var(--crit)' })), ' chybí') : '',
-      desc: `${pl0 ? `<b>${mv}</b> ${pl(mv, 'přesun', 'přesuny', 'přesunů')}` : 'Zatím stálé obsazení – sestav rozpis'} · nepřítomní <b>${abs}</b>. Úpravy, dovolené a noví lidé se zadávají tady.` });
+      desc: `${pl0 ? `<b>${mv}</b> ${pl(mv, 'přesun', 'přesuny', 'přesunů')}` : 'Zatím stálé obsazení – sestav rozpis'} · nepřítomní <b>${abs}</b> · na 12 h <b>${P.filter(p => !isAbsent(p, w) && h12Of(p, w)).length}</b> z ${present}. Úpravy, dovolené a noví lidé se zadávají tady.` });
   } else h += tile({ title: 'Rozpis týdne', value: '–', label: 'kdo je na které lince a směně', go: 'import', tone: 'amber', desc: 'Naimportuj jednou rozpisy směn – pak se rozpis sestavuje v aplikaci.', cta: 'Nahrát rozpisy →' });
 
   // 7 – skill matrix
