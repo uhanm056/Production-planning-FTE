@@ -1965,7 +1965,7 @@ if (document.getElementById('seedData')){
   try{
     const sd = JSON.parse(document.getElementById('seedData').textContent);
     if (!hasPeople() && !Object.keys(STATE.exports).length){ Object.assign(STATE, sd); persistLocal(); }
-    else if (sd.dle && !STATE.dle){ STATE.dle = sd.dle; persistLocal(); }   // routing doplnit i do už používaného prohlížeče
+    else if (sd.dle && (!STATE.dle || (STATE.dle.importedAt || '') < sd.dle.importedAt)){ STATE.dle = sd.dle; persistLocal(); }   // novější routing i do už používaného prohlížeče
   }catch(e){ console.warn('seed', e); }
 }
 fixPlanWeek();
