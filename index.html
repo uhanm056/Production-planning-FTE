@@ -181,6 +181,11 @@ code{font-family:var(--f-mono);font-size:.85em;background:var(--navy-soft);paddi
     </div>
     <h2>Uložené exporty</h2>
     <div id="importHistory"></div>
+    <div class="head" style="margin-top:2rem"><div><h1>Import rozpisů směn</h1><p>Týdenní rozpisy po linkách (šablona <code>CW_xx_&lt;linka&gt;.xlsx</code>, list <b>CWxx</b>). Lze vybrat všechny soubory najednou.</p></div></div>
+    <div class="card">
+      <div class="drop" id="dropRoster">Přetáhni sem rozpisy směn (.xlsx) nebo <label>vyber soubory<input type="file" id="rosterInput" accept=".xlsx,.xls" multiple hidden></label></div>
+      <div id="rosterPreview"></div>
+    </div>
   </section>
 
   <!-- METODIKA -->
@@ -209,7 +214,7 @@ code{font-family:var(--f-mono);font-size:.85em;background:var(--navy-soft);paddi
       </ol>
       <h3>Limity</h3>
       <ul>
-        <li>Lidé k dispozici se zadávají ručně z rozpisu (OP za den). Rozpis ukazuje přítomnost, ne headcount.</li>
+        <li>Lidé k dispozici = OP za den z rozpisů směn (Import → Import rozpisů směn), případně ručně v Kmenových datech. Rozpis ukazuje přítomnost, ne headcount. Nepřítomnosti z rozpisu se neodečítají. Prefix (posádky A/B ve 12h modelu, bez rozdělení L1/L2) se do linek nepřebírá.</li>
         <li>Linky bez normy nebo bez OP standardu se nepočítají – v plánu mají štítek CHYBÍ NORMA.</li>
         <li>HOP díly a nakupovaný materiál („bez projektu“) se do volume nepočítají. Foam zatím nemá vazbu na odvolávky.</li>
         <li>Data jsou jen v tomto prohlížeči (localStorage). Kmenová data zálohuj tlačítkem „Záloha kmenových dat“.</li>
@@ -416,6 +421,146 @@ function commitImport(){
   if (save()) toast(`Uloženo: export ${wkLabel(k)}. Plánovaný týden ${wkLabel(STATE.planWeek)}.`);
   $('importPreview').innerHTML = '';
   renderAll(); go('plan');
+}
+
+/* ----- Import rozpisů směn (šablona PL-SM-FR-G09-09: list CWxx, bloky Ranní / Odpolední / Noční) ----- */
+// rozpis (nadpis) [+ sekce] → linka; první shoda vyhrává. Prefix nemá rozdělení L1/L2 → bez linky.
+const ROSTER_RULES = [
+  { t: 'foaming', s: 'k1', l: 'foamk1' }, { t: 'foaming', l: 'foamk2' },
+  { t: 'mbeam', l: 'mbeam' }, { t: 'imm', l: 'imm' }, { t: 'gb/dp', l: 'gbdp' },
+  { t: 'sk336', l: 'sk336' }, { t: 'mfa2', l: 'w177ip' }, { t: 'ov51/64', l: 'ov5164' },
+  { t: 'g463', l: 'g463asy' }, { t: 'slush', l: 'slush' }
+];
+const rosterLine = (title, section) => (ROSTER_RULES.find(r => norm(title).includes(r.t) && (!r.s || norm(section).includes(r.s))) || {}).l || null;
+const SHIFT_CODE = l => { const n = norm(l); return n.startsWith('ranni') ? 'R' : n.startsWith('odpol') ? 'O' : n.startsWith('nocni') ? 'N' : null; };
+const personKey = n => norm(n).replace(/\./g, '').replace(/\s+/g, ' ');
+const ABS_HEADS = { 'dovolena / nv': 'Dovolená / NV', 'nemoc / ocr': 'Nemoc / OČR', 'sluzebni cesta / skoleni': 'Služební cesta / školení', 'presun / pujceni / konec': 'Přesun / půjčení / konec' };
+
+function parseRoster(wb, fileName){
+  const XLSX = window.XLSX;
+  const name = wb.SheetNames.find(n => /^\s*cw\s*\d{1,2}\s*$/i.test(n)) || wb.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' }).map(r => r.map(v => String(v ?? '').trim()));
+  const warnings = [];
+  // nadpis „MBEAM   CW 43   19.10. - 25.10.2026“
+  let title = '', week = null, year = null;
+  for (const r of rows.slice(0, 8)){
+    for (const v of r){
+      if (/POZOR/i.test(v)){ warnings.push(v); continue; }
+      const m = v.match(/^(.*?)\s+CW\s*(\d{1,2})\b(.*)$/i);
+      if (m && !title){ title = m[1].trim(); week = +m[2]; const y = m[3].match(/(20\d\d)/); year = y ? +y[1] : null; }
+    }
+  }
+  if (!title) throw new Error(`Nenalezen nadpis rozpisu „<linka> CW xx“ (list ${name}).`);
+  if (!year) year = new Date().getFullYear();
+  // bloky směn podle hlavičky „… | Pozice | SKILL LEVEL | NÁSTUP | Čas“
+  const h0 = rows.findIndex(r => r.some(v => norm(v) === 'pozice'));
+  if (h0 < 0) throw new Error('Nenalezena hlavička se sloupcem „Pozice“.');
+  const blocks = [];
+  rows[h0].forEach((v, j) => {
+    if (norm(v) !== 'pozice') return;
+    const t = rows[h0].findIndex((x, k) => k > j && norm(x) === 'cas');
+    let label = '';
+    for (let i = h0 - 1; i >= 0 && !label; i--) label = rows[i][j - 1] || '';
+    blocks.push({ c: j - 1, t, label: label || `Směna ${blocks.length + 1}`, code: SHIFT_CODE(label) });
+  });
+  const codes = blocks.map(b => b.code);
+  const rotation = codes.some((c, i) => c && codes.indexOf(c) !== i);
+  if (rotation) warnings.push('Rozpis má střídající se posádky (A/B) – lidé za den nejsou součtem bloků, do linek se nepřebírají.');
+  // lidé
+  const people = [], placeholders = [];
+  let section = '', end = rows.length;
+  for (let i = h0; i < rows.length; i++){
+    const r = rows[i];
+    if (r.some(v => /^po[cč]et lid[ií]|^celkem za den/i.test(v))){ end = i; break; }
+    if (norm(r[blocks[0].c + 1]) === 'pozice'){ section = r[blocks[0].c] || section; continue; }
+    const tl = /^tl\s*\/\s*tr$/.test(norm(section));
+    blocks.forEach((b, bi) => {
+      const raw = r[b.c]; if (!raw) return;
+      const time = b.t >= 0 ? r[b.t] : '';
+      raw.replace(/\([^)]*\)/g, ' ').split('+').map(s => s.trim()).filter(Boolean).forEach(n => {
+        if (!/[a-zà-ž]/.test(n)){ placeholders.push(`${n} (${b.label})`); return; }
+        people.push({ name: n, key: personKey(n), block: bi, section, pos: r[b.c + 1] || '', time, h12: /06:00\s*-\s*18:00|18:00\s*-\s*06:00/.test(time), tl, slot: /\//.test(n) });
+      });
+    });
+  }
+  // nepřítomnosti (dovolená, nemoc, služební cesta, přesuny) – jen pro informaci
+  const absences = []; let cols = [];
+  for (let i = end; i < rows.length; i++){
+    const r = rows[i];
+    if (r.some(v => /^P[řr]evedeno z|PL-SM-/i.test(v))) break;
+    const heads = r.map((v, j) => ABS_HEADS[norm(v)] ? { j, type: ABS_HEADS[norm(v)] } : null).filter(Boolean);
+    if (heads.length || r.some(v => norm(v) === 'legenda')){ cols = heads; continue; }
+    cols.forEach(({ j, type }) => { if (r[j] && /[a-zà-ž]/.test(r[j])) absences.push({ name: r[j], type, note: r[j + 1] || '' }); });
+  }
+  return { file: fileName, sheet: name, title, week, year, key: `${year}-${String(week).padStart(2,'0')}`, blocks, rotation, people, placeholders, absences, warnings };
+}
+
+// souhrn po linkách: OP po směnách, unikátní lidé za den, 12h, TL/TR
+function rosterSlices(groups){
+  const out = [];
+  groups.forEach(g => {
+    const by = new Map();
+    g.people.filter(p => !p.tl).forEach(p => { const l = g.rotation ? null : rosterLine(g.title, p.section); if (!by.has(l)) by.set(l, []); by.get(l).push(p); });
+    const tl = new Set(g.people.filter(p => p.tl).map(p => p.key)).size;
+    [...by.entries()].forEach(([line, ps], i) => {
+      const shift = {}; ['R','O','N'].forEach(c => shift[c] = new Set(ps.filter(p => g.blocks[p.block].code === c).map(p => p.key)).size);
+      out.push({ g, line, shift, day: new Set(ps.map(p => p.key)).size, h12: new Set(ps.filter(p => p.h12).map(p => p.key)).size,
+        tl: i === 0 ? tl : null, sections: [...new Set(ps.map(p => p.section))], slots: ps.filter(p => p.slot).length });
+    });
+  });
+  return out;
+}
+// lidé jmenovitě ve více rozpisech (bez TL/TR)
+function rosterShared(groups){
+  const m = new Map();
+  groups.forEach(g => g.people.filter(p => !p.tl && !p.slot).forEach(p => { if (!m.has(p.key)) m.set(p.key, { name: p.name, titles: new Set() }); m.get(p.key).titles.add(g.title); }));
+  return [...m.values()].filter(x => x.titles.size > 1).map(x => ({ name: x.name, titles: [...x.titles] }));
+}
+
+let PENDING_ROSTER = null;
+async function handleRosterFiles(files){
+  const box = $('rosterPreview'); if (!files.length) return;
+  box.innerHTML = '<p class="muted">Načítám…</p>';
+  const XLSX = await getXLSX().catch(e => { box.innerHTML = `<div class="warnbox">${esc(e.message)}</div>`; return null; }); if (!XLSX) return;
+  const groups = [], errors = [];
+  for (const f of files){
+    try{ groups.push(parseRoster(XLSX.read(await f.arrayBuffer(), { type: 'array' }), f.name)); }
+    catch(err){ errors.push(`<b>${esc(f.name)}:</b> ${esc(err.message)}`); }
+  }
+  const weeks = [...new Set(groups.map(g => g.key))];
+  PENDING_ROSTER = groups.length ? { groups, importedAt: new Date().toISOString() } : null;
+  const S = rosterSlices(groups), shared = rosterShared(groups);
+  const byLine = {}; S.filter(s => s.line).forEach(s => byLine[s.line] = (byLine[s.line] || 0) + s.day);
+  const absN = groups.reduce((n, g) => n + g.absences.length, 0);
+  box.innerHTML = `
+    ${errors.length ? `<div class="warnbox">${errors.join('<br>')}</div>` : ''}
+    ${weeks.length > 1 ? `<div class="warnbox"><b>Rozpisy jsou z různých týdnů:</b> ${weeks.map(wkLabel).join(', ')}</div>` : ''}
+    ${groups.length ? `<h2>Náhled rozpisů ${weeks.length === 1 ? wkLabel(weeks[0]) : ''}</h2>
+    <div class="tbl-wrap"><table><thead><tr><th>Rozpis</th><th>Soubor</th><th>Linka</th><th class="num">Ranní</th><th class="num">Odpol.</th><th class="num">Noční</th><th class="num">OP za den</th><th class="num">z toho 12h</th><th class="num">TL/TR</th><th>Pozn.</th></tr></thead><tbody>
+    ${S.map(s => `<tr><td><b>${esc(s.g.title)}</b>${s.sections.length && !/operatori/.test(norm(s.sections.join())) ? `<div class="note">${esc(s.sections.join(', '))}</div>` : ''}</td><td class="note">${esc(s.g.file)}</td>
+      <td>${s.line ? esc(lineById(s.line)?.name || s.line) : '<span class="tag neutral">bez linky</span>'}</td>
+      <td class="num">${s.shift.R}</td><td class="num">${s.shift.O}</td><td class="num">${s.shift.N}</td><td class="num"><b>${s.g.rotation ? '–' : s.day}</b></td><td class="num">${s.h12}</td><td class="num">${s.tl ?? ''}</td>
+      <td class="note">${[...(s.tl != null ? s.g.warnings : []), s.slots ? `${s.slots}× sdílená pozice (jméno/jméno) = 1 člověk` : '', s.tl != null && s.g.placeholders.length ? `nepočítáno: ${s.g.placeholders.join(', ')}` : ''].filter(Boolean).map(esc).join('<br>')}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="note">OP za den = unikátní jména bez TL/TR (kdo je ve dvou blocích, počítá se jednou; „A + B“ = 2 lidé). Uložením se u linek přepíšou <b>Lidé k dispozici/den</b>: ${Object.entries(byLine).map(([l, n]) => `${esc(lineById(l)?.name || l)} ${n}`).join(' · ') || '–'}.</p>
+    ${shared.length ? `<h3>Lidé ve více rozpisech (podklad pro „Sdílí lidi s“ – ověř)</h3><p class="note">${shared.map(x => `${esc(x.name)} (${x.titles.map(esc).join(', ')})`).join(' · ')}</p>` : ''}
+    ${absN ? `<details><summary class="note">Nepřítomnosti uvedené v rozpisech: ${absN} – jen pro informaci, od lidí k dispozici se neodečítají</summary><div class="tbl-wrap"><table><tbody>${groups.flatMap(g => g.absences.map(a => `<tr><td>${esc(g.title)}</td><td>${esc(a.name)}</td><td>${esc(a.type)}</td><td>${esc(a.note)}</td></tr>`)).join('')}</tbody></table></div></details>` : ''}
+    <div class="btns"><button class="btn" id="btnSaveRoster">Uložit lidi k dispozici</button><button class="btn secondary" id="btnCancelRoster">Zrušit</button></div>` : ''}`;
+  if (!groups.length) return;
+  $('btnSaveRoster').onclick = commitRoster;
+  $('btnCancelRoster').onclick = () => { PENDING_ROSTER = null; box.innerHTML = ''; };
+}
+function commitRoster(){
+  if (!PENDING_ROSTER) return;
+  const S = rosterSlices(PENDING_ROSTER.groups), byLine = {};
+  S.filter(s => s.line).forEach(s => { const r = byLine[s.line] ||= { n: 0, src: [] }; r.n += s.day; r.src.push(`${s.g.title} CW${s.g.week}`); });
+  Object.entries(byLine).forEach(([id, r]) => { const l = lineById(id); if (l){ l.avail = r.n; l.availSrc = `rozpis ${[...new Set(r.src)].join(', ')}`; } });
+  // uložit jen souhrn (bez nepřítomností) – kvůli místu v localStorage
+  STATE.roster = { importedAt: PENDING_ROSTER.importedAt, groups: PENDING_ROSTER.groups.map(({ absences, ...g }) => g) };
+  PENDING_ROSTER = null;
+  if (save()) toast(`Uloženo: lidé k dispozici u ${Object.keys(byLine).length} linek z ${STATE.roster.groups.length} rozpisů.`);
+  $('rosterPreview').innerHTML = '';
+  renderAll();
 }
 
 /* ===== 6. Výpočty ===== */
@@ -645,7 +790,7 @@ function renderMaster(){
       <td><input class="cell n" data-f="oee" type="number" min="1" max="100" value="${l.oee == null ? '' : Math.round(l.oee*100)}" placeholder="${Math.round(M().params.oee*100)}"></td>
       <td><input class="cell n" data-f="opStd" type="number" min="0" value="${l.opStd ?? ''}"></td>
       <td><input class="cell n" data-f="maxShifts" type="number" min="1" max="21" value="${l.maxShifts ?? 15}"></td>
-      <td><input class="cell n" data-f="avail" type="number" min="0" value="${l.avail ?? ''}"></td>
+      <td><input class="cell n" data-f="avail" type="number" min="0" value="${l.avail ?? ''}" title="${esc(l.availSrc || 'zadáno ručně')}">${l.availSrc ? `<div class="note">${esc(l.availSrc)}</div>` : ''}</td>
       <td><details class="lendbox"><summary>${(l.lend||[]).length ? (l.lend||[]).map(id => esc(lineById(id)?.name || '')).join(', ') : '<span class="muted">nikdo – upravit</span>'}</summary><div class="lend">${L.filter(o => o.id !== l.id).map(o => `<label><input type="checkbox" data-lend="${o.id}" ${(l.lend||[]).includes(o.id) ? 'checked' : ''}>${esc(o.name)}</label>`).join('')}</div></details></td>
       <td><input class="cell" data-f="note" value="${esc(l.note || '')}" style="min-width:260px"></td>
       <td><button class="btn danger small" data-del-line="${i}" title="Smazat linku">×</button></td></tr>`).join('')}</tbody></table>`;
@@ -733,6 +878,7 @@ $('linesTbl').addEventListener('change', e => {
   if (f === 'name' || f === 'note') l[f] = v;
   else if (f === 'oee') l.oee = v === '' ? null : num(v) / 100;
   else l[f] = v === '' ? null : num(v);
+  if (f === 'avail') delete l.availSrc;
   if (f === 'name') renderMaster();
   save(); renderCalc(); $('railMeta') && null;
 });
@@ -775,6 +921,11 @@ const drop = $('drop');
 ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
 $('fileInput').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+const dropR = $('dropRoster');
+['dragenter','dragover'].forEach(ev => dropR.addEventListener(ev, e => { e.preventDefault(); dropR.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => dropR.addEventListener(ev, e => { e.preventDefault(); dropR.classList.remove('over'); }));
+dropR.addEventListener('drop', e => handleRosterFiles([...e.dataTransfer.files]));
+$('rosterInput').addEventListener('change', e => { handleRosterFiles([...e.target.files]); e.target.value = ''; });
 
 $('themeBtn').onclick = () => {
   const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');

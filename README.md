@@ -4,7 +4,7 @@ Týdenní plánování potřeby lidí po linkách z odvolávek logistiky:
 odvolávky → volume po lince → směny → OP → porovnání s lidmi k dispozici → doporučení (přesuny, přesčas/víkend, agentura).
 
 ## Obsah
-- `index.html` – hlavní aplikace (single-file, data v localStorage, SheetJS z cdnjs). Stačí otevřít v prohlížeči.
+- `index.html` – hlavní aplikace (single-file, data v localStorage, SheetJS z cdnjs). Stačí otevřít v prohlížeči. Importuje přehled odvolávek (list Díly) a rozpisy směn (šablona `CW_xx_<linka>.xlsx`, list CWxx) → lidé k dispozici po linkách.
 - `model/FTE_model_Plana_CW43.xlsx` – Excel verze modelu (Převodník, Normy, Parametry, Volume po lince, Potřeba FTE, Linky z rozpisů, Kontrola jmen).
 - `docs/PREDANI_FTE_planovani.md` – předávací dokument: rozhodnutí, otevřené body a další kroky.
 
