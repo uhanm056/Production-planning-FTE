@@ -19,6 +19,7 @@ Každý týden před tvorbou rozpisu směn importovat nové odvolávky od logist
 - Foam: K2 (3 směny, 25 OP/den + Scoring 6), K1 (jen ranní 12h, 7 OP). Bez vazby na odvolávky.
 - Lidé ve více rozpisech: Tsiple Maryna (OV51/64, SK336, MFA2), Biro Kristina (OV51/64, MBEAM), Virich Oleksandr (G463 Assy, Prefix) → podklad pro „Sdílí lidi s“, ověřit.
 - Normy ostatních linek chybí – owner David Varhan. Nic nevymýšlet.
+- W520 „bez kategorie“ (2 díly, 6 ks za celý horizont CW43) – nejasné, kam patří. Záměrně nenamapováno, v aplikaci zůstává mezi nenamapovanými.
 
 ## Pravidla (skill provozni-aplikace)
 Single-file HTML, cdnjs jen, detekce sloupců podle hlavičky, čeština s diakritikou, navy #003B7A, RAG W_n vs W_n−1 (±5 %), G463 L1/L2 zvlášť, localStorage v try/catch, žádná vymyšlená data.
