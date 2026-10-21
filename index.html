@@ -52,7 +52,33 @@ nav.tabs button.active{background:var(--navy);border-color:var(--navy);color:#ff
 nav.tabs button.home{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:600}
 nav.tabs button.home:hover{background:var(--navy-d);border-color:var(--navy-d);color:#fff}
 #navtabs{display:flex;gap:8px;flex-wrap:wrap} #navtabs.hide{display:none}
-main{padding:18px 20px 60px;max-width:1500px;margin:0 auto;width:100%;min-width:0}
+main{padding:18px 20px 60px;max-width:2400px;margin:0 auto;width:100%;min-width:0}
+/* velké monitory (jako MEC): širší plocha, větší dlaždice a písmo */
+@media(min-width:1900px){
+  main{padding:24px 28px 60px}
+  body{font-size:15px} th,td{font-size:14px} th{font-size:12px}
+  .tiles{gap:24px}
+  .tile{min-height:400px;padding:30px 32px 24px 34px;border-radius:18px}
+  .tile::before{width:8px}
+  .tile .tt{font-size:13.5px;letter-spacing:.9px}
+  .tile .hd .badge{font-size:12.5px;padding:2px 11px}
+  .tile .tv{font-size:74px;margin:20px 0 8px} .tile .tv small{font-size:26px;margin-left:8px}
+  .tile.action .tv{font-size:56px}
+  .tile .tl{font-size:16px;margin-bottom:20px}
+  .tile .td{font-size:14.5px;line-height:1.55}
+  .tile .go{font-size:13.5px;padding-top:11px;margin-top:14px}
+  .tile.action .steps{font-size:14.5px;line-height:1.8}
+  .mb{font-size:13.5px;grid-template-columns:120px 1fr 72px} .mb .w{height:16px}
+  .homehead{min-height:220px;padding:44px 32px 36px} .homehead h2{font-size:34px} .homehead .sm{font-size:15px}
+  .databar{padding:16px 24px 16px 28px} .databar .dbi{font-size:15px} .databar .dbi b{font-size:18px}
+  .kpi .val{font-size:30px} .kpi .lbl{font-size:12px} .kpi .sub{font-size:13px}
+  h1{font-size:24px} h2{font-size:14px}
+  header.top .app{font-size:19px} .pill{font-size:13px}
+  nav.tabs button{font-size:14px;padding:7px 17px}
+}
+@media(min-width:2400px){
+  .tile{min-height:460px} .tile .tv{font-size:84px} .tile .tl{font-size:17px} .tile .td{font-size:15.5px}
+}
 section[data-view]{display:none} section[data-view].active{display:block}
 .head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:.75rem;margin-bottom:1rem}
 .head p{margin:.1rem 0 0;color:var(--muted)}
@@ -1721,7 +1747,7 @@ function renderHome(){
       const worst = rs.slice().sort((a, b) => a.gap - b.gap).slice(0, 4);
       h += tile({ title: 'Bilance lidí', value: sgn(Math.round(gap)), unit: 'lidí', label: 'skutečné DIR − potřeba podle routingu (DLE)', go: 'plan',
         tone: gap < -0.5 ? 'red' : 'green', badge: def ? `${def} ${pl(def, 'proces', 'procesy', 'procesů')} v deficitu` : 'vyrovnáno', badgeTone: def ? 'r' : 'g',
-        viz: miniBars(worst.map(r => ({ n: r.g, v: Math.round(r.gap), c: r.gap < 0 ? 'var(--crit)' : 'var(--good)' }))),
+        viz: miniBars(worst.map(r => ({ n: r.g, v: Math.round(r.gap) || 0, c: r.gap < 0 ? 'var(--crit)' : 'var(--good)' }))),
         desc: `Potřeba <b>${fmt(need, 1)}</b> lidí, skutečně (DIR) <b>${fmt(avail, 1)}</b>. Efektivita ${M().params.dleEff != null ? 'cíl ' + fmt(M().params.dleEff * 100) + ' %' : 'průměr ' + esc(STATE.dle.actual?.sheet || '–')}.` });
     } else {
       const ok = plan.filter(c => c.state === 'ok' && c.gap != null);
