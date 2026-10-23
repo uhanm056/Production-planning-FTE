@@ -250,6 +250,15 @@ tr.tot td{border-top:2px solid var(--line);font-weight:600} tr.cur td{background
 .p12.wide{width:100%;max-width:360px}
 select.sel-appr{min-width:118px} select.sel-appr.ok{background:var(--good-soft);color:var(--good);font-weight:600} select.sel-appr.no{background:var(--crit-soft);color:var(--crit);font-weight:600}
 .cfb{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.deptpick{margin:0 0 18px} .dpt{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:700;margin-bottom:8px}
+.dpgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.dpbtn{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto auto;gap:4px 12px;align-items:center;text-align:left;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--navy);border-radius:12px;padding:14px 16px;font:inherit;color:var(--text);cursor:pointer;box-shadow:var(--shadow);transition:transform .12s,box-shadow .12s}
+.dpbtn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(16,32,48,.14);border-color:var(--info)} .dpbtn:focus-visible{outline:3px solid var(--info);outline-offset:2px}
+.dpi{grid-row:1/4;font-size:26px;width:46px;height:46px;border-radius:10px;background:var(--navy-soft);display:flex;align-items:center;justify-content:center}
+.dpn{font-size:18px;font-weight:700;color:var(--accent,var(--navy))} .dpn small{display:block;font-size:12px;font-weight:500;color:var(--muted)}
+.dps{font-size:12.5px;color:var(--muted)} .dps b{color:var(--text);font-size:14px} .dps .h12t{color:var(--h12-text);font-weight:600} .dps .down{color:var(--crit);font-weight:600}
+.dpgo{font-size:12px;font-weight:600;color:var(--info)}
+@media (prefers-reduced-motion:reduce){.dpbtn{transition:none}}
 .tile.orange::before{background:var(--h12)} .tile.orange .tv{color:var(--h12-text)}
 .meth p,.meth li{max-width:860px}
 code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);padding:.05rem .3rem;border-radius:4px}
@@ -1096,7 +1105,7 @@ function renderRoster(){
   if (!hasPeople()){ el.innerHTML = emptyState('Rozpis se skládá z lidí v aplikaci. Naimportuj jednou rozpisy směn (Import → Import rozpisů směn) – další změny už jen tady.'); return; }
   if (!w){ el.innerHTML = emptyState('Nejdřív naimportuj přehled odvolávek – určí plánovaný týden.'); return; }
   // přepínač oddělení: výroba = plánování z volume, ostatní oddělení = stejný rozpis pozice × směny
-  const depts = DEPTS.filter(x => x === 'Výroba' || peopleList().some(p => deptOf(p) === x)), tabs = depts.length > 1 ? ['Přehled', ...depts] : depts;
+  const depts = DEPTS, tabs = ['Přehled', ...depts];
   const cur = tabs.includes(VIEW.rdept) ? VIEW.rdept : 'Výroba';
   const chips = tabs.length > 1 ? `<div class="chips">${tabs.map(x => `<button class="chip ${x === cur ? 'active' : ''}" data-rdept="${esc(x)}">${x === 'Přehled' ? 'Přehled oddělení' : esc(x) + ` <span class="muted">${peopleList().filter(p => deptOf(p) === x && !isAbsent(p, w)).length}</span>`}</button>`).join('')}</div>` : '';
   if (cur !== 'Výroba'){ el.innerHTML = chips + (cur === 'Přehled' ? deptOverview(w) : deptRoster(cur, w)); return; }
@@ -2084,13 +2093,23 @@ function sparkline(vals, labels){
   </svg>`;
 }
 
+// vstup do rozpisu oddělení přímo z úvodní stránky
+const DEPT_ICON = { 'Výroba': '⚙', 'Logistika': '⛟', 'Q support': '✔', 'Maintenance': '🔧' };
+function deptPicker(w){
+  if (!hasPeople()) return '';
+  const own = d => MON().wk.depts.find(x => x[0] === d)?.[1] || '';
+  return `<div class="deptpick"><div class="dpt">Rozpis směn – vyber oddělení${w ? ` · ${wkLabel(w)}` : ''}</div><div class="dpgrid">${DEPTS.map(d => {
+    const S = w ? deptStats(d, w) : null, n = S ? S.ops.length : peopleList().filter(p => deptOf(p) === d && p.role !== 'TL').length;
+    return `<button class="dpbtn" data-rdept-go="${esc(d)}"><span class="dpi" aria-hidden="true">${DEPT_ICON[d]}</span><span class="dpn">${esc(d)}<small>${esc(own(d))}</small></span>
+      <span class="dps"><b>${fmt(n)}</b> lidí${S ? ` · <span class="h12t">12 h ${S.h12}</span>${S.absent.length ? ` · nepřít. ${S.absent.length}` : ''}${S.vacant.length ? ` · <span class="down">vedení chybí ${S.vacant.length}</span>` : ''}` : ''}</span><span class="dpgo">Otevřít rozpis →</span></button>`; }).join('')}</div></div>`;
+}
 function renderHome(){
   const el = $('homeBody'), lk = latestKey(), w = STATE.planWeek, L = M().lines;
   const V = lk ? volumes(lk) : null, plan = lk ? planFor(lk, w) : null;
   const D = skillData(), R = STATE.rosterMeta;
   let h = `<div class="homehead"><div class="kicker">Volume → FTE · Yanfeng Planá</div><h2>${lk ? 'Plán ' + wkLabel(w) : 'Plánování FTE'}</h2>
     <span class="sm">${lk ? `Export odvolávek ${wkLabel(lk)}${R ? ` · rozpisy směn ${[...new Set(R.groups.map(g => 'CW' + g.week))].join(', ')}` : ''} · ${L.length} linek` : 'Zatím nejsou nahraná žádná data – začni dlaždicí „Nahrát data“.'}</span>
-    ${V ? `<select id="homeWeek" aria-label="Plánovaný týden">${V.weeks.slice(0, 12).map(x => `<option value="${x}" ${x === w ? 'selected' : ''}>${wkLabel(x)}</option>`).join('')}</select>` : ''}</div><div class="tiles">`;
+    ${V ? `<select id="homeWeek" aria-label="Plánovaný týden">${V.weeks.slice(0, 12).map(x => `<option value="${x}" ${x === w ? 'selected' : ''}>${wkLabel(x)}</option>`).join('')}</select>` : ''}</div>${deptPicker(w)}<div class="tiles">`;
 
   // 1 – nahrát
   h += tile({ title: 'Nahrát data', value: '+', unit: '.xlsx', label: 'odvolávky a rozpisy směn', tone: 'action', go: 'import', cta: 'Nahrát →',
@@ -2475,7 +2494,9 @@ function go(view){
   window.scrollTo(0, 0);
 }
 $('rail').addEventListener('click', e => { const b = e.target.closest('button[data-go]'); if (b) go(b.dataset.go); });
-$('homeBody').addEventListener('click', e => { const t = e.target.closest('[data-go]'); if (t) go(t.dataset.go); });
+$('homeBody').addEventListener('click', e => {
+  const d = e.target.closest('[data-rdept-go]'); if (d){ VIEW.rdept = d.dataset.rdeptGo; LS.set(APP_KEY + '.rdept', VIEW.rdept); renderRoster(); go('roster'); return; }
+  const t = e.target.closest('[data-go]'); if (t) go(t.dataset.go); });
 $('homeBody').addEventListener('keydown', e => { const t = e.target.closest('[data-go]'); if (t && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); go(t.dataset.go); } });
 $('homeBody').addEventListener('change', e => { if (e.target.id !== 'homeWeek') return; setPlanWeek(e.target.value); renderAll(); });
 $('weekChips').addEventListener('click', e => { const b = e.target.closest('[data-week]'); if (!b) return; setPlanWeek(b.dataset.week); renderAll(); });
