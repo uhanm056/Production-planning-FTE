@@ -5,7 +5,7 @@ odvolávky → volume po lince → směny → OP → porovnání s lidmi k dispo
 
 ## Obsah
 - **Sdílená verze pro tým:** https://claude.ai/artifact/ET3UZWtGNRiDiX32ysucdw (stejná data pro všechny, rozpis týdne se dělá jen tam).
-- `index.html` – hlavní aplikace (single-file, data v localStorage, SheetJS z cdnjs). Stačí otevřít v prohlížeči. Importuje přehled odvolávek (list Díly) a rozpisy směn (šablona `CW_xx_<linka>.xlsx`, list CWxx) → lidé k dispozici po linkách.
+- `index.html` – hlavní aplikace (single-file, data v localStorage, SheetJS z cdnjs). Stačí otevřít v prohlížeči. Importuje přehled odvolávek (list Díly) a rozpisy směn (šablona `CW_xx_<linka>.xlsx`, list CWxx) → lidé k dispozici po linkách. Monitoring 12h směn a víkendové práce (náhrada sešitů Kontrola 12h směn a Víkendový rozpis).
 - `model/FTE_model_Plana_CW43.xlsx` – Excel verze modelu (Převodník, Normy, Parametry, Volume po lince, Potřeba FTE, Linky z rozpisů, Kontrola jmen).
 - `docs/PREDANI_FTE_planovani.md` – předávací dokument: rozhodnutí, otevřené body a další kroky.
 
