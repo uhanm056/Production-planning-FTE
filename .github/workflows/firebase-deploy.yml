@@ -1,6 +1,7 @@
-# Po každém začlenění do main nasadí aplikaci na Firebase Hosting (https://fte-plana.web.app)
-# spolu s pravidly Firestore z firestore.rules. Stejný Firebase projekt jako MEC Analyzer.
-# Potřebuje tajemství FIREBASE_SERVICE_ACCOUNT (stejný JSON klíč jako v repozitáři MEC) – postup v README.
+# Po každém začlenění do main nasadí aplikaci na Firebase Hosting (https://<projekt>.web.app)
+# spolu s pravidly Realtime Database z database.rules.json. Vlastní Firebase projekt (odděleně od MEC),
+# zabezpečení a přihlášení stejné jako MEC. Potřebuje tajemství FIREBASE_SERVICE_ACCOUNT – postup v README.
+# ID projektu: proměnná repozitáře FIREBASE_PROJECT (výchozí fte-plana, jako v .firebaserc).
 name: Nasazení na Firebase
 
 on:
@@ -35,10 +36,10 @@ jobs:
         if: env.SA != ''
         with:
           node-version: "20"
-      - name: Nasazení (hosting + pravidla Firestore)
+      - name: Nasazení (hosting + pravidla databáze)
         if: env.SA != ''
         run: |
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          npx --yes firebase-tools@13.29.1 deploy --only hosting,firestore:rules --project mec---action-plan --non-interactive
+          npx --yes firebase-tools@13.29.1 deploy --only hosting,database --project "${{ vars.FIREBASE_PROJECT || 'fte-plana' }}" --non-interactive
           rm -f "$RUNNER_TEMP/sa.json"

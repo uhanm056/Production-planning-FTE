@@ -1,0 +1,28 @@
+{
+  "rules": {
+    "fte": {
+      ".read": "auth != null && (root.child('fte/admin').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true || ((root.child('fte/allow').child(auth.token.email.toLowerCase().replace('.', ',')).val() === 'edit' || root.child('fte/allow').child(auth.token.email.toLowerCase().replace('.', ',')).val() === 'view') && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider === 'microsoft.com')))",
+      "data": {
+        "$coll": {
+          "$id": {
+            ".write": "auth != null && (root.child('fte/admin').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true || (root.child('fte/allow').child(auth.token.email.toLowerCase().replace('.', ',')).val() === 'edit' && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider === 'microsoft.com')))",
+            ".validate": "newData.hasChildren(['j', 'at', 'by']) && newData.child('j').isString() && newData.child('at').isNumber() && newData.child('by').val() === auth.token.email",
+            "j": { ".validate": true }, "at": { ".validate": true }, "by": { ".validate": true },
+            "$other": { ".validate": false }
+          }
+        }
+      },
+      "allow": {
+        ".write": "auth != null && root.child('fte/admin').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true",
+        "$k": {
+          ".read": "auth != null && $k === auth.token.email.toLowerCase().replace('.', ',')",
+          ".validate": "newData.val() === 'edit' || newData.val() === 'view'"
+        }
+      },
+      "admin": {
+        ".write": false,
+        "$k": { ".read": "auth != null && $k === auth.token.email.toLowerCase().replace('.', ',')" }
+      }
+    }
+  }
+}

@@ -1,6 +1,5 @@
 {
   "hosting": {
-    "site": "fte-plana",
     "public": "site",
     "ignore": ["firebase.json", "**/.*"],
     "headers": [
@@ -11,7 +10,7 @@
       ]}
     ]
   },
-  "firestore": {
-    "rules": "firestore.rules"
+  "database": {
+    "rules": "database.rules.json"
   }
 }

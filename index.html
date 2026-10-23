@@ -662,17 +662,19 @@ async function connectDb(){
   subscribeDb(db, e => { console.warn('db snapshot', e); if (e?.code === 'revoked' || e?.code === 'not_granted') $('hdrSync').textContent = 'jen čtení'; });
 }
 
-/* ----- Online verze: Firebase (stejný projekt jako MEC Analyzer) – přihlášení + Firestore ----- */
-// apiKey není tajný; přístup hlídají pravidla firestore.rules a seznam fte_acl (e-mail → role admin / edit / view)
-const FIREBASE_CONFIG = {"apiKey":"AIzaSyDoZ3kudh0qwSGzETqmTJ9YY4_6Fk3N11k","authDomain":"mec---action-plan.firebaseapp.com","projectId":"mec---action-plan","appId":"1:1047347711662:web:76456f3d68c8959cc7a73f"};
-const FB_ROOT = 'fte/main', FB_ACL = 'fte_acl';
+/* ----- Online verze: vlastní Firebase projekt, zabezpečení a přihlášení jako MEC Analyzer ----- */
+// Realtime Database: fte/data/{kolekce}/{id} = {j: JSON, at, by}; přístupy fte/allow/{email} = "edit" | "view", správci fte/admin/{email} = true (jen konzole).
+// apiKey není tajný; přístup hlídají pravidla database.rules.json + seznam fte/allow. Konfiguraci lze vložit i v Import → Online verze (uloží se v prohlížeči).
+const FIREBASE_CONFIG = null;   // __FIREBASE_CONFIG__ – po založení projektu sem patří objekt z Project settings → Web app
+const LSKEY_FB = APP_KEY + '.firebase';
 const FB = { on: false, user: null, role: null, loaded: false, local: null };
 const ROLE_TXT = { admin: 'správce', edit: 'úpravy', view: 'jen čtení' };
-const mailKey = m => String(m || '').trim().toLowerCase();
+const fbKey = m => String(m || '').trim().toLowerCase().replace(/[.#$\/\[\]]/g, ',');
+const fbConfig = () => FIREBASE_CONFIG || LS.get(LSKEY_FB);
 function fbLoad(){
   return fbLoad.p ??= (async () => {
     const V = '10.12.2';
-    for (const n of ['app', 'auth', 'firestore']) await new Promise((res, rej) => {
+    for (const n of ['app', 'auth', 'database']) await new Promise((res, rej) => {
       const alt = [`https://cdnjs.cloudflare.com/ajax/libs/firebase/${V}/firebase-${n}-compat.min.js`, `https://www.gstatic.com/firebasejs/${V}/firebase-${n}-compat.js`];
       const tryLoad = k => { const sc = document.createElement('script'); sc.src = alt[k]; sc.onload = res; sc.onerror = () => k + 1 < alt.length ? tryLoad(k + 1) : rej(new Error('Knihovna Firebase se nenačetla')); document.head.appendChild(sc); };
       tryLoad(0);
@@ -680,23 +682,29 @@ function fbLoad(){
     return window.firebase;
   })().catch(e => { fbLoad.p = null; throw e; });
 }
-// adaptér Firestore → stejné rozhraní jako sdílená databáze artefaktu (dokument = JSON, update = hluboké sloučení v transakci)
+// adaptér Realtime Database → stejné rozhraní jako sdílená databáze artefaktu (dokument = JSON, update = hluboké sloučení v transakci)
 const deepMerge = (a, b) => (!b || typeof b !== 'object' || Array.isArray(b) || !a || typeof a !== 'object' || Array.isArray(a)) ? b : Object.keys(b).reduce((o, k) => (o[k] = deepMerge(a[k], b[k]), o), { ...a });
-function fsDb(fs){
-  const stamp = data => ({ j: JSON.stringify(data), at: Date.now(), by: FB.user?.email || '' });
-  const dec = s => s.exists ? JSON.parse(s.data().j) : undefined;
-  const code = e => Object.assign(e, { code: e?.code === 'permission-denied' ? 'not_granted' : e?.code });
+const fbStamp = data => ({ j: JSON.stringify(data), at: Date.now(), by: FB.user?.email || '' });
+function rtDb(db){
+  const code = e => Object.assign(e || new Error('db'), { code: /permission/i.test(e?.code || e?.message || '') ? 'not_granted' : e?.code });
+  const val = s => s.exists() ? JSON.parse(s.val().j) : undefined;
   return {
     doc(path){
-      const ref = fs.doc(FB_ROOT + '/' + path);
+      const ref = db.ref('fte/data/' + path);
       return {
-        set: data => ref.set(stamp(data)).catch(e => { throw code(e); }),
-        update: data => fs.runTransaction(async t => { const s = await t.get(ref); if (!s.exists) throw Object.assign(new Error('missing'), { code: 'invalid_argument' }); t.set(ref, stamp(deepMerge(dec(s), data))); }).catch(e => { throw code(e); }),
-        delete: () => ref.delete().catch(e => { throw code(e); }),
-        onSnapshot: (cb, err) => ref.onSnapshot(s => cb({ exists: s.exists, data: () => dec(s) }), e => err && err(code(e)))
+        set: data => ref.set(fbStamp(data)).catch(e => { throw code(e); }),
+        async update(data){
+          try{
+            await ref.once('value');   // naplní mezipaměť, jinak transakce začne s null
+            const r = await ref.transaction(cur => cur && cur.j ? fbStamp(deepMerge(JSON.parse(cur.j), data)) : undefined);
+            if (!r.committed) throw Object.assign(new Error('missing'), { code: 'invalid_argument' });
+          }catch(e){ throw e.code === 'invalid_argument' ? e : code(e); }
+        },
+        delete: () => ref.remove().catch(e => { throw code(e); }),
+        onSnapshot: (cb, err) => ref.on('value', s => cb({ exists: s.exists(), data: () => val(s) }), e => err && err(code(e)))
       };
     },
-    collection: name => ({ onSnapshot: (cb, err) => fs.collection(FB_ROOT + '/' + name).onSnapshot(q => cb({ docs: q.docs.map(d => ({ id: d.id, data: () => JSON.parse(d.data().j) })) }), e => err && err(code(e))) })
+    collection: name => ({ onSnapshot: (cb, err) => db.ref('fte/data/' + name).on('value', s => { const v = s.val() || {}; cb({ docs: Object.keys(v).filter(k => v[k]?.j).map(id => ({ id, data: () => JSON.parse(v[id].j) })) }); }, e => err && err(code(e))) })
   };
 }
 function fbHeader(){
@@ -707,33 +715,36 @@ function fbHeader(){
   if (FB.role) $('hdrSync').textContent = FB.role === 'view' ? 'online · jen čtení' : 'online · stejná data pro všechny';
 }
 async function fbInit(){
-  if (!FIREBASE_CONFIG?.apiKey) return;
+  const cfg = fbConfig(); if (!cfg?.apiKey || !cfg.databaseURL) return;
   let firebase; try{ firebase = await fbLoad(); }catch(e){ console.warn(e); return; }
-  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-  FB.auth = firebase.auth(); FB.fs = firebase.firestore(); FB.on = true;
-  if (window.FTE_EMULATOR){ FB.auth.useEmulator(window.FTE_EMULATOR.auth); FB.fs.useEmulator(...window.FTE_EMULATOR.firestore); }
+  try{ if (!firebase.apps.length) firebase.initializeApp(cfg); }catch(e){ toast('Neplatná konfigurace Firebase: ' + e.message); return; }
+  FB.auth = firebase.auth(); FB.db = firebase.database(); FB.on = true;
+  if (window.FTE_EMULATOR){ FB.auth.useEmulator(window.FTE_EMULATOR.auth); FB.db.useEmulator(...window.FTE_EMULATOR.database); }
   FB.auth.onAuthStateChanged(u => { FB.user = u; fbAccess(); });
-  fbHeader();
+  fbHeader(); renderOnline();
 }
 const fbVerified = u => u && (u.emailVerified || u.providerData.some(p => p.providerId === 'microsoft.com'));
 async function fbAccess(){
   fbHeader();
   const u = FB.user; if (!u || FB.role) return;
-  if (!fbVerified(u)){ openLogin('verify'); return; }
-  let acl = null;
-  try{ const s = await FB.fs.collection(FB_ACL).doc(mailKey(u.email)).get(); acl = s.exists ? s.data() : null; }catch(e){ console.warn('acl', e); }
-  if (!acl || !ROLE_TXT[acl.role]){ fbHeader(); toast(`Účet ${u.email} zatím nemá přístup ke sdíleným datům – napište Milanovi Hanusovi.`); return; }
-  FB.role = acl.role;
+  const k = fbKey(u.email);
+  let admin = false, allow = null;
+  try{ admin = (await FB.db.ref('fte/admin/' + k).once('value')).val() === true; }catch(e){}
+  try{ allow = (await FB.db.ref('fte/allow/' + k).once('value')).val(); }catch(e){}
+  if (!admin && !fbVerified(u)){ openLogin('verify'); return; }   // jako MEC: správce smí i bez ověření
+  const role = admin ? 'admin' : (allow === 'edit' || allow === true) ? 'edit' : allow === 'view' ? 'view' : null;
+  if (!role){ fbHeader(); renderOnline(); toast(`Účet ${u.email} zatím nemá přístup ke sdíleným datům – napište Milanovi Hanusovi.`); return; }
+  FB.role = role;
   FB.local = clone({ exports: STATE.exports, master: STATE.master, people: STATE.people, plans: STATE.plans, rosterMeta: STATE.rosterMeta, dle: STATE.dle, mon: STATE.mon, h12: STATE.h12, wk: STATE.wk });
-  DB = fsDb(FB.fs);
-  subscribeDb(DB, e => { console.warn('db snapshot', e); if (e?.code === 'not_granted') toast('Nemáte oprávnění ke sdíleným datům.'); });
+  DB = rtDb(FB.db);
+  subscribeDb(DB, e => { console.warn('db snapshot', e); if (e?.code === 'not_granted') toast('Nemáte oprávnění ke sdíleným datům – ověřte, že je váš e-mail v seznamu přístupů.'); });
   fbHeader(); renderAll();
   if ($('dlg').open && $('lgForm')) $('dlg').close();
   toast(`Přihlášeno: ${u.email} (${ROLE_TXT[FB.role]})`);
 }
 function openLogin(mode){
   const dl = $('dlg'), u = FB.user;
-  if (u && fbVerified(u)){
+  if (u && (fbVerified(u) || FB.role)){
     dl.innerHTML = `<form method="dialog" id="lgForm"><h2 style="margin-top:0">Sdílená data online</h2>
       <p>Přihlášen(a) jako <b>${esc(u.email)}</b>${FB.role ? ` · ${ROLE_TXT[FB.role]}` : ''}.</p>
       ${FB.role ? '' : '<div class="warnbox">Tento e-mail zatím nemá přístup. Napište Milanovi Hanusovi – přidá ho do seznamu přístupů.</div>'}
@@ -745,7 +756,7 @@ function openLogin(mode){
   } else {
     const web = /^https?:/.test(location.protocol);
     dl.innerHTML = `<form method="dialog" id="lgForm"><h2 style="margin-top:0">Přihlášení ke sdíleným datům</h2>
-      <p class="note">Stejný účet jako do MEC Analyzeru. Bez přihlášení pracujete jen s daty v tomto prohlížeči.</p>
+      <p class="note">Bez přihlášení pracujete jen s daty v tomto prohlížeči.</p>
       <div class="frow"><label>Firemní e-mail<input class="cell" id="lgMail" type="email" autocomplete="username"></label></div>
       <div class="frow"><label>Heslo (aspoň 8 znaků)<input class="cell" id="lgPass" type="password" autocomplete="current-password"></label></div>
       <p class="note" id="lgErr"></p>
@@ -755,11 +766,11 @@ function openLogin(mode){
 }
 const FB_ERR = { 'auth/invalid-credential': 'Špatný e-mail nebo heslo.', 'auth/wrong-password': 'Špatný e-mail nebo heslo.', 'auth/user-not-found': 'Účet neexistuje – založte si ho.', 'auth/email-already-in-use': 'Účet už existuje – přihlaste se.', 'auth/weak-password': 'Heslo musí mít aspoň 8 znaků.', 'auth/invalid-email': 'Neplatný e-mail.', 'auth/too-many-requests': 'Příliš mnoho pokusů, zkuste to za chvíli.', 'auth/popup-closed-by-user': 'Okno přihlášení bylo zavřeno.' };
 async function onLoginClick(t){
-  const err = m => { const e = $('lgErr'); if (e) e.textContent = m; }, A = FB.auth, mail = () => mailKey($('lgMail')?.value), pass = () => $('lgPass')?.value || '';
+  const err = m => { const e = $('lgErr'); if (e) e.textContent = m; }, A = FB.auth, mail = () => String($('lgMail')?.value || '').trim().toLowerCase(), pass = () => $('lgPass')?.value || '';
   try{
-    if (t.id === 'lgIn'){ await A.signInWithEmailAndPassword(mail(), pass()); if (!fbVerified(A.currentUser)) openLogin('verify'); else openLogin(); }
-    else if (t.id === 'lgNew'){ if (pass().length < 8){ err('Heslo musí mít aspoň 8 znaků.'); return; } const c = await A.createUserWithEmailAndPassword(mail(), pass()); await c.user.sendEmailVerification(); openLogin('verify'); }
-    else if (t.id === 'lgReset'){ if (!mail()){ err('Napište e-mail.'); return; } await A.sendPasswordResetEmail(mail()); err('Odkaz na nové heslo je v e-mailu.'); }
+    if (t.id === 'lgIn'){ await A.signInWithEmailAndPassword(mail(), pass()); openLogin(fbVerified(A.currentUser) ? '' : 'verify'); }
+    else if (t.id === 'lgNew'){ if (pass().length < 8){ err('Heslo musí mít aspoň 8 znaků.'); return true; } const c = await A.createUserWithEmailAndPassword(mail(), pass()); await c.user.sendEmailVerification(); openLogin('verify'); }
+    else if (t.id === 'lgReset'){ if (!mail()){ err('Napište e-mail.'); return true; } await A.sendPasswordResetEmail(mail()); err('Odkaz na nové heslo je v e-mailu.'); }
     else if (t.id === 'lgMs'){ const pr = new firebase.auth.OAuthProvider('microsoft.com'); pr.setCustomParameters({ prompt: 'select_account' }); await A.signInWithPopup(pr); }
     else if (t.id === 'lgResend'){ await A.currentUser.sendEmailVerification(); err('Odkaz byl poslán znovu.'); }
     else if (t.id === 'lgVerified'){ await A.currentUser.reload(); await A.currentUser.getIdToken(true); FB.user = A.currentUser; if (fbVerified(FB.user)){ $('dlg').close(); fbAccess(); } else err('E-mail ještě není ověřený – klikněte na odkaz v e-mailu.'); }
@@ -768,46 +779,47 @@ async function onLoginClick(t){
   }catch(e){ err(FB_ERR[e.code] || `Přihlášení selhalo (${e.code || e.message}).`); }
   return true;
 }
-// správce: první naplnění prázdné online databáze daty z tohoto souboru + seznam přístupů
+// správce: první naplnění prázdné online databáze daty z tohoto souboru (víceřádkový zápis po dávkách)
 async function fbUploadLocal(){
   const L = FB.local; if (!L || FB.role !== 'admin') return;
-  const w = [];
-  w.push(['app/master', L.master]); if (L.rosterMeta) w.push(['app/roster', L.rosterMeta]); if (L.dle) w.push(['app/dle', L.dle]); if (L.mon) w.push(['app/monitor', L.mon]);
-  Object.entries(L.exports || {}).forEach(([k, v]) => w.push(['exports/' + k, v]));
-  Object.entries(L.people || {}).forEach(([k, v]) => w.push(['people/' + k, v]));
-  Object.entries(L.plans || {}).forEach(([k, v]) => w.push(['plans/' + k, v]));
-  Object.entries(L.h12 || {}).forEach(([k, v]) => w.push(['h12/' + k, v]));
-  Object.entries(L.wk || {}).forEach(([k, v]) => w.push(['weekend/' + k, v]));
+  const w = [['app/master', L.master]];
+  if (L.rosterMeta) w.push(['app/roster', L.rosterMeta]); if (L.dle) w.push(['app/dle', L.dle]); if (L.mon) w.push(['app/monitor', L.mon]);
+  [['exports', L.exports], ['people', L.people], ['plans', L.plans], ['h12', L.h12], ['weekend', L.wk]].forEach(([c, o]) => Object.entries(o || {}).forEach(([k, v]) => w.push([c + '/' + k, v])));
   toast(`Nahrávám ${w.length} záznamů…`);
   let ok = 0;
-  for (let i = 0; i < w.length; i += 400){   // dávky (Firestore max. 500 zápisů najednou)
-    const bt = FB.fs.batch(), part = w.slice(i, i + 400);
-    part.forEach(([path, data]) => bt.set(FB.fs.doc(FB_ROOT + '/' + path), { j: JSON.stringify(data), at: Date.now(), by: FB.user.email }));
-    if (await dbWrite(() => bt.commit())) ok += part.length;
+  for (let i = 0; i < w.length; i += 200){
+    const part = w.slice(i, i + 200), upd = Object.fromEntries(part.map(([path, data]) => [path, fbStamp(data)]));
+    if (await dbWrite(() => FB.db.ref('fte/data').update(upd))) ok += part.length;
   }
   FB.local = null; toast(`Nahráno do online databáze: ${ok} z ${w.length} záznamů.`); renderAll();
 }
 function renderOnline(){
   const el = $('onlineBox'); if (!el) return;
-  if (!FB.on){ el.innerHTML = ''; return; }
-  const L = FB.local, nL = L ? Object.keys(L.people || {}).length : 0;
-  let h = `<div class="head" style="margin-top:2rem"><div><h1>Online verze</h1><p>Sdílená data ve Firebase (stejný účet jako MEC Analyzer). ${FB.role ? `Přihlášen(a): <b>${esc(FB.user.email)}</b> · ${ROLE_TXT[FB.role]}.` : 'Nejste přihlášen(a) – data jsou jen v tomto prohlížeči.'}</p></div></div><div class="card">`;
-  if (!FB.role) h += `<button class="btn" id="olLogin">Přihlásit se ke sdíleným datům</button>`;
+  if (DB && !FB.role){ el.innerHTML = ''; return; }   // verze na claude.ai má vlastní sdílenou databázi
+  const cfg = fbConfig(), L = FB.local, nL = L ? Object.keys(L.people || {}).length : 0;
+  let h = `<div class="head" style="margin-top:2rem"><div><h1>Online verze</h1><p>${!cfg ? 'Sdílená data přes Firebase (přihlášení e-mailem nebo účtem Microsoft, seznam přístupů – stejně jako MEC Analyzer).' : FB.role ? `Přihlášen(a): <b>${esc(FB.user.email)}</b> · ${ROLE_TXT[FB.role]}.` : 'Nejste přihlášen(a) – data jsou jen v tomto prohlížeči.'}</p></div></div><div class="card">`;
+  if (FB.on && !FB.role) h += `<button class="btn" id="olLogin">Přihlásit se ke sdíleným datům</button>`;
   if (FB.role === 'admin' && FB.loaded && !hasPeople() && nL) h += `<div class="warnbox"><b>Online databáze je prázdná.</b> V tomto souboru jsou data (${nL} lidí, ${Object.keys(L.exports || {}).length} export odvolávek, 12h a víkendy).<div class="btns" style="margin-top:6px"><button class="btn small" id="olUpload">Nahrát data z tohoto souboru online</button></div></div>`;
-  if (FB.role === 'admin') h += `<h3>Přístupy</h3><p class="note">E-mail (malými písmeny) a role: <b>úpravy</b> = manažeři a TL (rozpisy, 12h, víkendy), <b>jen čtení</b> = prohlížení. Kolega se pak přihlásí svým účtem (z MEC nebo si ho založí). Správce se přidává jen ve Firebase konzoli.</p>
+  if (FB.role === 'admin') h += `<h3>Přístupy</h3><p class="note">E-mail a role: <b>úpravy</b> = manažeři a TL (rozpisy, 12h, víkendy), <b>jen čtení</b> = prohlížení. Kolega si pak založí účet (nebo se přihlásí účtem Microsoft). Správce se přidává jen ve Firebase konzoli (fte/admin).</p>
     <div class="frow"><label>E-mail<input class="cell" id="olMail" type="email" placeholder="jmeno.prijmeni@yanfeng.com"></label><label>Role<select class="cell" id="olRole"><option value="edit">úpravy</option><option value="view">jen čtení</option></select></label><button class="btn" id="olAdd">Přidat</button></div>
     <div id="olList" class="note">Načítám…</div>`;
+  if (!FIREBASE_CONFIG && !FB.role) h += `<details style="margin-top:10px"${cfg ? '' : ' open'}><summary class="note">Připojení k Firebase (JSON z konzole → Project settings → Web app)</summary>
+    <textarea class="cell" id="olCfg" rows="4" style="font-family:var(--f-mono);margin-top:6px" placeholder='{"apiKey":"…","authDomain":"…","databaseURL":"https://….europe-west1.firebasedatabase.app","projectId":"…","appId":"…"}'>${cfg ? esc(JSON.stringify(cfg)) : ''}</textarea>
+    <div class="btns" style="margin-top:6px"><button class="btn small" id="olCfgSave">Uložit a připojit</button>${cfg ? '<button class="btn danger small" id="olCfgClear">Odpojit a smazat konfiguraci</button>' : ''}</div></details>`;
   el.innerHTML = h + '</div>';
-  if (FB.role === 'admin') FB.fs.collection(FB_ACL).get().then(q => { const box = $('olList'); if (!box) return;
-    box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>E-mail</th><th>Role</th><th></th></tr></thead><tbody>${q.docs.map(d => `<tr><td>${esc(d.id)}</td><td>${ROLE_TXT[d.data().role] || esc(d.data().role)}</td><td>${d.data().role === 'admin' ? '' : `<button class="btn danger small" data-oldel="${esc(d.id)}">Odebrat</button>`}</td></tr>`).join('')}</tbody></table></div>`; }).catch(e => { const box = $('olList'); if (box) box.textContent = 'Seznam se nenačetl: ' + (e.code || e.message); });
+  if (FB.role === 'admin') Promise.all([FB.db.ref('fte/allow').once('value'), FB.db.ref('fte/admin').once('value')]).then(([al, ad]) => { const box = $('olList'); if (!box) return;
+    const rows = [...Object.keys(ad.val() || {}).map(k => [k, 'admin']), ...Object.entries(al.val() || {}).map(([k, v]) => [k, v === true ? 'edit' : v])];
+    box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>E-mail</th><th>Role</th><th></th></tr></thead><tbody>${rows.map(([k, r]) => `<tr><td>${esc(k.replace(/,/g, '.'))}</td><td>${ROLE_TXT[r] || esc(r)}</td><td>${r === 'admin' ? '' : `<button class="btn danger small" data-oldel="${esc(k)}">Odebrat</button>`}</td></tr>`).join('')}</tbody></table></div>`; }).catch(e => { const box = $('olList'); if (box) box.textContent = 'Seznam se nenačetl: ' + (e.code || e.message); });
 }
 async function onOnlineClick(e){
   const t = e.target;
   if (t.id === 'olLogin') openLogin();
   else if (t.id === 'olUpload'){ t.disabled = true; await fbUploadLocal(); }
-  else if (t.id === 'olAdd'){ const m = mailKey($('olMail').value); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)){ toast('Neplatný e-mail.'); return; }
-    try{ await FB.fs.collection(FB_ACL).doc(m).set({ role: $('olRole').value, by: FB.user.email, at: Date.now() }); toast(`Přístup přidán: ${m}`); renderOnline(); }catch(err){ toast(`Nepodařilo se (${err.code})`); } }
-  else if (t.dataset.oldel){ if (!armed(t)) return; try{ await FB.fs.collection(FB_ACL).doc(t.dataset.oldel).delete(); renderOnline(); }catch(err){ toast(`Nepodařilo se (${err.code})`); } }
+  else if (t.id === 'olAdd'){ const m = String($('olMail').value).trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)){ toast('Neplatný e-mail.'); return; }
+    try{ await FB.db.ref('fte/allow/' + fbKey(m)).set($('olRole').value); toast(`Přístup přidán: ${m}`); renderOnline(); }catch(err){ toast(`Nepodařilo se (${err.code || err.message})`); } }
+  else if (t.dataset.oldel){ if (!armed(t)) return; try{ await FB.db.ref('fte/allow/' + t.dataset.oldel).remove(); renderOnline(); }catch(err){ toast(`Nepodařilo se (${err.code || err.message})`); } }
+  else if (t.id === 'olCfgSave'){ try{ const o = JSON.parse($('olCfg').value); if (!o.apiKey || !o.databaseURL) throw new Error('chybí apiKey nebo databaseURL'); LS.set(LSKEY_FB, o); location.reload(); }catch(err){ toast('Konfigurace není platný JSON: ' + err.message); } }
+  else if (t.id === 'olCfgClear'){ if (!armed(t)) return; try{ await FB.auth?.signOut(); }catch(_){} try{ localStorage.removeItem(LSKEY_FB); }catch(_){} location.reload(); }
 }
 function fixPlanWeek(){
   const lk = latestKey(); if (!lk) return;

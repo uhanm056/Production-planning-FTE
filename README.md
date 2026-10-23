@@ -12,28 +12,34 @@ odvolávky → volume po lince → směny → OP → porovnání s lidmi k dispo
 ## Pravidla
 Vizuál podle MEC Analyzer Planá (navy header s logem, úvodní dlaždice, pilulková navigace). Single-file HTML, knihovny jen z cdnjs, detekce sloupců podle hlavičky, čeština s diakritikou, navy `#003B7A`, RAG W_n vs W_n−1 (±5 %), G463 Prefix L1/L2 vždy zvlášť, localStorage v try/catch, žádná vymyšlená data (chybějící normy zůstávají prázdné).
 
-## Online verze (Firebase – stejný projekt jako MEC Analyzer)
+## Online verze (vlastní Firebase projekt, zabezpečení jako MEC Analyzer)
 
-Web: **https://fte-plana.web.app** – přihlášení stejným účtem jako do MEC (e-mail + heslo, nebo účet Microsoft).
+Samostatný Firebase projekt (odděleně od MEC), stejná metoda přihlášení a zabezpečení jako MEC:
+e-mail + heslo s ověřením e-mailu nebo účet Microsoft, Realtime Database, seznam přístupů a správců v databázi.
 Po každém začlenění do `main` workflow `.github/workflows/firebase-deploy.yml` zkopíruje `index.html` do `site/`
-a nasadí ho na Firebase Hosting spolu s pravidly `firestore.rules`.
+a nasadí ho na Firebase Hosting (`https://<projekt>.web.app`) spolu s pravidly `database.rules.json`.
 
-- Data jsou ve **Firestore** (`fte/main/{kolekce}/{id}`, dokument = `{j: JSON, at, by}`); MEC používá Realtime Database,
-  takže nasazení FTE nemění jeho data ani pravidla.
-- Přístupy: `fte_acl/{email malými písmeny}` s polem `role` = `admin` (správce), `edit` (manažeři, TL), `view` (jen čtení).
-  Správce přidává `edit` / `view` přímo v aplikaci (Import → Online verze → Přístupy); `admin` jen ve Firebase konzoli.
-- Web neobsahuje žádná data – jména a čísla jsou jen ve Firestore za přihlášením.
+- Data: `fte/data/{kolekce}/{id}` = `{j: JSON, at, by}` (`by` musí být e-mail přihlášeného).
+- Přístupy: `fte/allow/{email}` = `"edit"` (manažeři, TL) nebo `"view"` (jen čtení); správci `fte/admin/{email}` = `true`
+  (e-mail malými písmeny, tečky nahrazené čárkou: `jan,novak@yanfeng,com`). Správce přidává `allow` přímo v aplikaci
+  (Import → Online verze → Přístupy); `admin` jen ve Firebase konzoli, aplikace do něj zapsat nemůže.
+- Číst smí ověřený e-mail ze seznamu (nebo účet Microsoft) a správce, zapisovat `edit` a správce. Web neobsahuje žádná data.
 - Verze na claude.ai (artefakt) a soubor HTML bez přihlášení fungují dál; po přihlášení soubor pracuje se stejnými online daty.
+- Konfigurace projektu je v `index.html` (`FIREBASE_CONFIG`); do té doby jde vložit v Import → Online verze (uloží se v prohlížeči).
 
-### Jednorázové zprovoznění (Firebase konzole projektu `mec---action-plan`)
+### Jednorázové zprovoznění
 
-1. **Build → Firestore Database → Create database** → umístění `eur3 (europe-west)` → *production mode*.
-2. **Build → Hosting → Add another site** → ID webu `fte-plana` (když je obsazené, zvolte jiné a změňte `site` ve `firebase.json`).
-3. **Authentication → Settings → Authorized domains → Add domain** → `fte-plana.web.app` (kvůli přihlášení účtem Microsoft).
-4. **Firestore → Data → Start collection** `fte_acl` → ID dokumentu = váš e-mail z MEC malými písmeny → pole `role` (string) = `admin`.
-5. GitHub → tento repozitář → **Settings → Secrets and variables → Actions → New repository secret**:
-   `FIREBASE_SERVICE_ACCOUNT` = stejný JSON klíč servisního účtu jako v repozitáři MEC
-   (nemáte ho: Firebase konzole → Project settings → Service accounts → Generate new private key; účet má roli Firebase Admin).
-6. GitHub → **Actions → Nasazení na Firebase → Run workflow**.
-7. Otevřete předvyplněný soubor `FTE_Planovani_Plana_CW43.html`, přihlaste se jako správce → **Import → Online verze →
-   Nahrát data z tohoto souboru online** (jen když je online databáze prázdná). Pak v **Přístupy** přidejte manažery a TL.
+1. https://console.firebase.google.com → **Add project** → název `fte-plana` (ID projektu = adresa webu `fte-plana.web.app`), Analytics vypnout.
+2. **Build → Realtime Database → Create database** → umístění `europe-west1`, *locked mode*.
+3. **Build → Authentication → Get started → Email/Password** zapnout (volitelně **Microsoft** jako v MEC);
+   **Settings → Authorized domains** obsahuje `<projekt>.web.app` automaticky.
+4. **Realtime Database → Data**: přidat `fte` → `admin` → `vas,email@yanfeng,com` = `true` (malými písmeny, tečky → čárky).
+5. **Build → Hosting → Get started** (jen proklikat).
+6. **Project settings → General → Your apps → Web app (</>)** → zkopírovat objekt `firebaseConfig` (s `databaseURL`)
+   a poslat ho do `index.html` jako `FIREBASE_CONFIG`.
+7. **Project settings → Service accounts → Generate new private key** → GitHub → tento repozitář → **Settings → Secrets and
+   variables → Actions** → secret `FIREBASE_SERVICE_ACCOUNT` = celý JSON (soubor pak smazat). Jiné ID projektu než `fte-plana`
+   → proměnná repozitáře `FIREBASE_PROJECT`.
+8. GitHub → **Actions → Nasazení na Firebase → Run workflow** (nebo začlenit do `main`).
+9. Otevřít předvyplněný soubor `FTE_Planovani_Plana_CW43.html`, založit si účet / přihlásit se jako správce → **Import → Online verze →
+   Nahrát data z tohoto souboru online** (jen když je online databáze prázdná). Pak v **Přístupy** přidat manažery a TL.
