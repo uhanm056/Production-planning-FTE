@@ -293,6 +293,7 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
   <div class="spacer"></div>
   <button class="pill" id="themeBtn" title="Přepnout světlý / tmavý režim">◐ Světlý / tmavý</button>
   <span class="pill opt" id="hdrSync">data jen v tomto prohlížeči</span>
+  <button class="pill" id="hdrLogin" hidden>Přihlásit se ke sdíleným datům</button>
 </header>
 <nav class="tabs" id="rail">
   <button class="home" data-go="home">&#8962;&nbsp; Dlaždice</button>
@@ -404,6 +405,7 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
     </div>
     <h2>Uložené exporty</h2>
     <div id="importHistory"></div>
+    <div id="onlineBox"></div>
     <div class="head" style="margin-top:2rem"><div><h1>Import routingu / DLE</h1><p>Soubor DLE (např. <code>DLE-Oct26_CW42.xlsx</code>): list <b>Structuredata</b> = hodiny přímé práce na kus po dílech, <b>transactions</b> = skutečná odvedení (poměr polotovarů), poslední list <b>CWxx</b> = efektivita a lidé po procesech. Stačí nahrát při změně routingu nebo jednou za čas.</p></div></div>
     <div class="card">
       <div class="drop" id="dropDle">Přetáhni sem soubor DLE (.xlsx) nebo <label>vyber soubor<input type="file" id="dleInput" accept=".xlsx,.xlsm,.xls" hidden></label></div>
@@ -598,7 +600,7 @@ async function dbWrite(fn){
   try{ await fn(); return true; }
   catch(e){
     console.warn('db', e);
-    toast(e?.code === 'quota_exceeded' ? 'Sdílená databáze je plná – smaž staré exporty.' : e?.code === 'invalid_argument' ? 'Změnu se nepodařilo uložit – máš jen právo čtení, nebo je záznam příliš velký.' : `Uložení selhalo (${e?.code || 'chyba'}). Zkus to znovu.`);
+    toast(e?.code === 'not_granted' ? 'Nemáte právo zapisovat – máte přístup jen ke čtení.' : e?.code === 'quota_exceeded' ? 'Sdílená databáze je plná – smaž staré exporty.' : e?.code === 'invalid_argument' ? 'Změnu se nepodařilo uložit – máš jen právo čtení, nebo je záznam příliš velký.' : `Uložení selhalo (${e?.code || 'chyba'}). Zkus to znovu.`);
     return false;
   }
 }
@@ -638,22 +640,174 @@ function scheduleRender(){
     renderPending = false; volCache.clear(); renderAll();
   });
 }
-async function connectDb(){
-  if (!window.claude?.use) return;
-  const db = await window.claude.use('db').catch(() => null); if (!db) return;
-  DB = db;
+// sdílená databáze (claude.ai artefakt nebo Firebase): stejné dokumenty, stejné odběry
+function subscribeDb(db, err){
   STATE = { ...STATE, exports: {}, people: {}, plans: {}, rosterMeta: null, dle: null, master: DEFAULT_MASTER(), mon: null, h12: {}, wk: {} };
-  $('hdrSync').textContent = 'sdíleno · stejná data pro všechny';
-  const err = e => { console.warn('db snapshot', e); if (e?.code === 'revoked' || e?.code === 'not_granted') $('hdrSync').textContent = 'jen čtení'; };
+  lastMasterJSON = null;
   db.doc('app/master').onSnapshot(s => { const js = JSON.stringify(s.data() ?? null); if (js === lastMasterJSON) return; lastMasterJSON = js; STATE.master = s.exists ? clone(s.data()) : DEFAULT_MASTER(); scheduleRender(); }, err);
   db.doc('app/roster').onSnapshot(s => { STATE.rosterMeta = s.exists ? clone(s.data()) : null; scheduleRender(); }, err);
   db.doc('app/dle').onSnapshot(s => { STATE.dle = s.exists ? s.data() : null; scheduleRender(); }, err);
   db.collection('exports').onSnapshot(q => { STATE.exports = Object.fromEntries(q.docs.map(d => [d.id, d.data()])); fixPlanWeek(); scheduleRender(); }, err);
-  db.collection('people').onSnapshot(q => { STATE.people = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
+  db.collection('people').onSnapshot(q => { STATE.people = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); FB.loaded = true; scheduleRender(); }, err);
   db.collection('plans').onSnapshot(q => { STATE.plans = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
   db.doc('app/monitor').onSnapshot(s => { STATE.mon = s.exists ? clone(s.data()) : null; scheduleRender(); }, err);
   db.collection('h12').onSnapshot(q => { STATE.h12 = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
   db.collection('weekend').onSnapshot(q => { STATE.wk = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
+}
+async function connectDb(){
+  if (!window.claude?.use) return fbInit();
+  const db = await window.claude.use('db').catch(() => null); if (!db) return fbInit();
+  DB = db;
+  $('hdrSync').textContent = 'sdíleno · stejná data pro všechny';
+  subscribeDb(db, e => { console.warn('db snapshot', e); if (e?.code === 'revoked' || e?.code === 'not_granted') $('hdrSync').textContent = 'jen čtení'; });
+}
+
+/* ----- Online verze: Firebase (stejný projekt jako MEC Analyzer) – přihlášení + Firestore ----- */
+// apiKey není tajný; přístup hlídají pravidla firestore.rules a seznam fte_acl (e-mail → role admin / edit / view)
+const FIREBASE_CONFIG = {"apiKey":"AIzaSyDoZ3kudh0qwSGzETqmTJ9YY4_6Fk3N11k","authDomain":"mec---action-plan.firebaseapp.com","projectId":"mec---action-plan","appId":"1:1047347711662:web:76456f3d68c8959cc7a73f"};
+const FB_ROOT = 'fte/main', FB_ACL = 'fte_acl';
+const FB = { on: false, user: null, role: null, loaded: false, local: null };
+const ROLE_TXT = { admin: 'správce', edit: 'úpravy', view: 'jen čtení' };
+const mailKey = m => String(m || '').trim().toLowerCase();
+function fbLoad(){
+  return fbLoad.p ??= (async () => {
+    const V = '10.12.2';
+    for (const n of ['app', 'auth', 'firestore']) await new Promise((res, rej) => {
+      const alt = [`https://cdnjs.cloudflare.com/ajax/libs/firebase/${V}/firebase-${n}-compat.min.js`, `https://www.gstatic.com/firebasejs/${V}/firebase-${n}-compat.js`];
+      const tryLoad = k => { const sc = document.createElement('script'); sc.src = alt[k]; sc.onload = res; sc.onerror = () => k + 1 < alt.length ? tryLoad(k + 1) : rej(new Error('Knihovna Firebase se nenačetla')); document.head.appendChild(sc); };
+      tryLoad(0);
+    });
+    return window.firebase;
+  })().catch(e => { fbLoad.p = null; throw e; });
+}
+// adaptér Firestore → stejné rozhraní jako sdílená databáze artefaktu (dokument = JSON, update = hluboké sloučení v transakci)
+const deepMerge = (a, b) => (!b || typeof b !== 'object' || Array.isArray(b) || !a || typeof a !== 'object' || Array.isArray(a)) ? b : Object.keys(b).reduce((o, k) => (o[k] = deepMerge(a[k], b[k]), o), { ...a });
+function fsDb(fs){
+  const stamp = data => ({ j: JSON.stringify(data), at: Date.now(), by: FB.user?.email || '' });
+  const dec = s => s.exists ? JSON.parse(s.data().j) : undefined;
+  const code = e => Object.assign(e, { code: e?.code === 'permission-denied' ? 'not_granted' : e?.code });
+  return {
+    doc(path){
+      const ref = fs.doc(FB_ROOT + '/' + path);
+      return {
+        set: data => ref.set(stamp(data)).catch(e => { throw code(e); }),
+        update: data => fs.runTransaction(async t => { const s = await t.get(ref); if (!s.exists) throw Object.assign(new Error('missing'), { code: 'invalid_argument' }); t.set(ref, stamp(deepMerge(dec(s), data))); }).catch(e => { throw code(e); }),
+        delete: () => ref.delete().catch(e => { throw code(e); }),
+        onSnapshot: (cb, err) => ref.onSnapshot(s => cb({ exists: s.exists, data: () => dec(s) }), e => err && err(code(e)))
+      };
+    },
+    collection: name => ({ onSnapshot: (cb, err) => fs.collection(FB_ROOT + '/' + name).onSnapshot(q => cb({ docs: q.docs.map(d => ({ id: d.id, data: () => JSON.parse(d.data().j) })) }), e => err && err(code(e))) })
+  };
+}
+function fbHeader(){
+  const b = $('hdrLogin'); if (!b) return;
+  b.hidden = !FB.on;
+  b.textContent = FB.role ? `${FB.user.email} · ${ROLE_TXT[FB.role]}` : FB.user ? 'čeká na ověření / přístup' : 'Přihlásit se ke sdíleným datům';
+  b.classList.toggle('warn', !!FB.user && !FB.role);
+  if (FB.role) $('hdrSync').textContent = FB.role === 'view' ? 'online · jen čtení' : 'online · stejná data pro všechny';
+}
+async function fbInit(){
+  if (!FIREBASE_CONFIG?.apiKey) return;
+  let firebase; try{ firebase = await fbLoad(); }catch(e){ console.warn(e); return; }
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  FB.auth = firebase.auth(); FB.fs = firebase.firestore(); FB.on = true;
+  if (window.FTE_EMULATOR){ FB.auth.useEmulator(window.FTE_EMULATOR.auth); FB.fs.useEmulator(...window.FTE_EMULATOR.firestore); }
+  FB.auth.onAuthStateChanged(u => { FB.user = u; fbAccess(); });
+  fbHeader();
+}
+const fbVerified = u => u && (u.emailVerified || u.providerData.some(p => p.providerId === 'microsoft.com'));
+async function fbAccess(){
+  fbHeader();
+  const u = FB.user; if (!u || FB.role) return;
+  if (!fbVerified(u)){ openLogin('verify'); return; }
+  let acl = null;
+  try{ const s = await FB.fs.collection(FB_ACL).doc(mailKey(u.email)).get(); acl = s.exists ? s.data() : null; }catch(e){ console.warn('acl', e); }
+  if (!acl || !ROLE_TXT[acl.role]){ fbHeader(); toast(`Účet ${u.email} zatím nemá přístup ke sdíleným datům – napište Milanovi Hanusovi.`); return; }
+  FB.role = acl.role;
+  FB.local = clone({ exports: STATE.exports, master: STATE.master, people: STATE.people, plans: STATE.plans, rosterMeta: STATE.rosterMeta, dle: STATE.dle, mon: STATE.mon, h12: STATE.h12, wk: STATE.wk });
+  DB = fsDb(FB.fs);
+  subscribeDb(DB, e => { console.warn('db snapshot', e); if (e?.code === 'not_granted') toast('Nemáte oprávnění ke sdíleným datům.'); });
+  fbHeader(); renderAll();
+  if ($('dlg').open && $('lgForm')) $('dlg').close();
+  toast(`Přihlášeno: ${u.email} (${ROLE_TXT[FB.role]})`);
+}
+function openLogin(mode){
+  const dl = $('dlg'), u = FB.user;
+  if (u && fbVerified(u)){
+    dl.innerHTML = `<form method="dialog" id="lgForm"><h2 style="margin-top:0">Sdílená data online</h2>
+      <p>Přihlášen(a) jako <b>${esc(u.email)}</b>${FB.role ? ` · ${ROLE_TXT[FB.role]}` : ''}.</p>
+      ${FB.role ? '' : '<div class="warnbox">Tento e-mail zatím nemá přístup. Napište Milanovi Hanusovi – přidá ho do seznamu přístupů.</div>'}
+      <div class="btns" style="justify-content:flex-end"><button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn danger" id="lgOut">Odhlásit</button></div></form>`;
+  } else if (u && mode === 'verify'){
+    dl.innerHTML = `<form method="dialog" id="lgForm"><h2 style="margin-top:0">Ověřte e-mail</h2>
+      <p>Na <b>${esc(u.email)}</b> jsme poslali ověřovací odkaz. Klikněte na něj a pak tady na <b>Mám ověřeno</b>.</p><p class="note" id="lgErr">Nepřišel? Podívejte se do spamu nebo pošlete odkaz znovu.</p>
+      <div class="btns" style="justify-content:flex-end"><button type="button" class="btn secondary" id="lgOut">Odhlásit</button><button type="button" class="btn secondary" id="lgResend">Poslat odkaz znovu</button><button type="button" class="btn" id="lgVerified">Mám ověřeno</button></div></form>`;
+  } else {
+    const web = /^https?:/.test(location.protocol);
+    dl.innerHTML = `<form method="dialog" id="lgForm"><h2 style="margin-top:0">Přihlášení ke sdíleným datům</h2>
+      <p class="note">Stejný účet jako do MEC Analyzeru. Bez přihlášení pracujete jen s daty v tomto prohlížeči.</p>
+      <div class="frow"><label>Firemní e-mail<input class="cell" id="lgMail" type="email" autocomplete="username"></label></div>
+      <div class="frow"><label>Heslo (aspoň 8 znaků)<input class="cell" id="lgPass" type="password" autocomplete="current-password"></label></div>
+      <p class="note" id="lgErr"></p>
+      <div class="btns" style="justify-content:flex-end"><button type="button" class="btn secondary small" id="lgReset">Zapomenuté heslo</button><button type="button" class="btn secondary small" id="lgNew">Založit účet</button>${web ? '<button type="button" class="btn secondary" id="lgMs">Účet Microsoft</button>' : ''}<button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="lgIn">Přihlásit</button></div></form>`;
+  }
+  if (!dl.open) dl.showModal();
+}
+const FB_ERR = { 'auth/invalid-credential': 'Špatný e-mail nebo heslo.', 'auth/wrong-password': 'Špatný e-mail nebo heslo.', 'auth/user-not-found': 'Účet neexistuje – založte si ho.', 'auth/email-already-in-use': 'Účet už existuje – přihlaste se.', 'auth/weak-password': 'Heslo musí mít aspoň 8 znaků.', 'auth/invalid-email': 'Neplatný e-mail.', 'auth/too-many-requests': 'Příliš mnoho pokusů, zkuste to za chvíli.', 'auth/popup-closed-by-user': 'Okno přihlášení bylo zavřeno.' };
+async function onLoginClick(t){
+  const err = m => { const e = $('lgErr'); if (e) e.textContent = m; }, A = FB.auth, mail = () => mailKey($('lgMail')?.value), pass = () => $('lgPass')?.value || '';
+  try{
+    if (t.id === 'lgIn'){ await A.signInWithEmailAndPassword(mail(), pass()); if (!fbVerified(A.currentUser)) openLogin('verify'); else openLogin(); }
+    else if (t.id === 'lgNew'){ if (pass().length < 8){ err('Heslo musí mít aspoň 8 znaků.'); return; } const c = await A.createUserWithEmailAndPassword(mail(), pass()); await c.user.sendEmailVerification(); openLogin('verify'); }
+    else if (t.id === 'lgReset'){ if (!mail()){ err('Napište e-mail.'); return; } await A.sendPasswordResetEmail(mail()); err('Odkaz na nové heslo je v e-mailu.'); }
+    else if (t.id === 'lgMs'){ const pr = new firebase.auth.OAuthProvider('microsoft.com'); pr.setCustomParameters({ prompt: 'select_account' }); await A.signInWithPopup(pr); }
+    else if (t.id === 'lgResend'){ await A.currentUser.sendEmailVerification(); err('Odkaz byl poslán znovu.'); }
+    else if (t.id === 'lgVerified'){ await A.currentUser.reload(); await A.currentUser.getIdToken(true); FB.user = A.currentUser; if (fbVerified(FB.user)){ $('dlg').close(); fbAccess(); } else err('E-mail ještě není ověřený – klikněte na odkaz v e-mailu.'); }
+    else if (t.id === 'lgOut'){ await A.signOut(); location.reload(); }
+    else return false;
+  }catch(e){ err(FB_ERR[e.code] || `Přihlášení selhalo (${e.code || e.message}).`); }
+  return true;
+}
+// správce: první naplnění prázdné online databáze daty z tohoto souboru + seznam přístupů
+async function fbUploadLocal(){
+  const L = FB.local; if (!L || FB.role !== 'admin') return;
+  const w = [];
+  w.push(['app/master', L.master]); if (L.rosterMeta) w.push(['app/roster', L.rosterMeta]); if (L.dle) w.push(['app/dle', L.dle]); if (L.mon) w.push(['app/monitor', L.mon]);
+  Object.entries(L.exports || {}).forEach(([k, v]) => w.push(['exports/' + k, v]));
+  Object.entries(L.people || {}).forEach(([k, v]) => w.push(['people/' + k, v]));
+  Object.entries(L.plans || {}).forEach(([k, v]) => w.push(['plans/' + k, v]));
+  Object.entries(L.h12 || {}).forEach(([k, v]) => w.push(['h12/' + k, v]));
+  Object.entries(L.wk || {}).forEach(([k, v]) => w.push(['weekend/' + k, v]));
+  toast(`Nahrávám ${w.length} záznamů…`);
+  let ok = 0;
+  for (let i = 0; i < w.length; i += 400){   // dávky (Firestore max. 500 zápisů najednou)
+    const bt = FB.fs.batch(), part = w.slice(i, i + 400);
+    part.forEach(([path, data]) => bt.set(FB.fs.doc(FB_ROOT + '/' + path), { j: JSON.stringify(data), at: Date.now(), by: FB.user.email }));
+    if (await dbWrite(() => bt.commit())) ok += part.length;
+  }
+  FB.local = null; toast(`Nahráno do online databáze: ${ok} z ${w.length} záznamů.`); renderAll();
+}
+function renderOnline(){
+  const el = $('onlineBox'); if (!el) return;
+  if (!FB.on){ el.innerHTML = ''; return; }
+  const L = FB.local, nL = L ? Object.keys(L.people || {}).length : 0;
+  let h = `<div class="head" style="margin-top:2rem"><div><h1>Online verze</h1><p>Sdílená data ve Firebase (stejný účet jako MEC Analyzer). ${FB.role ? `Přihlášen(a): <b>${esc(FB.user.email)}</b> · ${ROLE_TXT[FB.role]}.` : 'Nejste přihlášen(a) – data jsou jen v tomto prohlížeči.'}</p></div></div><div class="card">`;
+  if (!FB.role) h += `<button class="btn" id="olLogin">Přihlásit se ke sdíleným datům</button>`;
+  if (FB.role === 'admin' && FB.loaded && !hasPeople() && nL) h += `<div class="warnbox"><b>Online databáze je prázdná.</b> V tomto souboru jsou data (${nL} lidí, ${Object.keys(L.exports || {}).length} export odvolávek, 12h a víkendy).<div class="btns" style="margin-top:6px"><button class="btn small" id="olUpload">Nahrát data z tohoto souboru online</button></div></div>`;
+  if (FB.role === 'admin') h += `<h3>Přístupy</h3><p class="note">E-mail (malými písmeny) a role: <b>úpravy</b> = manažeři a TL (rozpisy, 12h, víkendy), <b>jen čtení</b> = prohlížení. Kolega se pak přihlásí svým účtem (z MEC nebo si ho založí). Správce se přidává jen ve Firebase konzoli.</p>
+    <div class="frow"><label>E-mail<input class="cell" id="olMail" type="email" placeholder="jmeno.prijmeni@yanfeng.com"></label><label>Role<select class="cell" id="olRole"><option value="edit">úpravy</option><option value="view">jen čtení</option></select></label><button class="btn" id="olAdd">Přidat</button></div>
+    <div id="olList" class="note">Načítám…</div>`;
+  el.innerHTML = h + '</div>';
+  if (FB.role === 'admin') FB.fs.collection(FB_ACL).get().then(q => { const box = $('olList'); if (!box) return;
+    box.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>E-mail</th><th>Role</th><th></th></tr></thead><tbody>${q.docs.map(d => `<tr><td>${esc(d.id)}</td><td>${ROLE_TXT[d.data().role] || esc(d.data().role)}</td><td>${d.data().role === 'admin' ? '' : `<button class="btn danger small" data-oldel="${esc(d.id)}">Odebrat</button>`}</td></tr>`).join('')}</tbody></table></div>`; }).catch(e => { const box = $('olList'); if (box) box.textContent = 'Seznam se nenačetl: ' + (e.code || e.message); });
+}
+async function onOnlineClick(e){
+  const t = e.target;
+  if (t.id === 'olLogin') openLogin();
+  else if (t.id === 'olUpload'){ t.disabled = true; await fbUploadLocal(); }
+  else if (t.id === 'olAdd'){ const m = mailKey($('olMail').value); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)){ toast('Neplatný e-mail.'); return; }
+    try{ await FB.fs.collection(FB_ACL).doc(m).set({ role: $('olRole').value, by: FB.user.email, at: Date.now() }); toast(`Přístup přidán: ${m}`); renderOnline(); }catch(err){ toast(`Nepodařilo se (${err.code})`); } }
+  else if (t.dataset.oldel){ if (!armed(t)) return; try{ await FB.fs.collection(FB_ACL).doc(t.dataset.oldel).delete(); renderOnline(); }catch(err){ toast(`Nepodařilo se (${err.code})`); } }
 }
 function fixPlanWeek(){
   const lk = latestKey(); if (!lk) return;
@@ -984,7 +1138,7 @@ function renderSkills(){
 const SHIFTS = ['R', 'O', 'N'];
 const SHIFT_TXT = { R: 'Ranní', O: 'Odpolední', N: 'Noční' };
 const ABS_TYPES = ['Dovolená / NV', 'Nemoc / OČR', 'Služební cesta / školení', 'Přesun / půjčení / konec'];
-const peopleList = () => Object.values(STATE.people);
+const peopleList = () => Object.values(STATE.people).filter(p => p && p.name);
 const deptOf = p => p.dept || deptOfHome(p.home);
 const operators = () => peopleList().filter(p => p.role !== 'TL' && deptOf(p) === 'Výroba');   // plánování FTE jen pro výrobu
 const hasPeople = () => peopleList().length > 0;
@@ -2079,7 +2233,7 @@ function renderHistory(){
 
 function renderAll(){
   volCache.clear();
-  weekChips(); renderPlan(); renderReco(); renderOutlook(); renderMaster(); renderSkills(); renderRoster(); renderParams(); renderHistory(); renderH12(); renderWk(); renderCost(); renderMonInfo();
+  weekChips(); renderPlan(); renderReco(); renderOutlook(); renderMaster(); renderSkills(); renderRoster(); renderParams(); renderHistory(); renderH12(); renderWk(); renderCost(); renderMonInfo(); renderOnline();
   $('rosterWeeks').innerHTML = $('weekChips').innerHTML;
   const lk = latestKey();
   $('hdrExport').textContent = lk ? `Export ${wkLabel(lk)}` : 'bez dat';
@@ -2603,7 +2757,9 @@ $('rosterBody').addEventListener('click', e => {
     LS.set(APP_KEY + '.open', [...ROSTER_OPEN]);
   }
 });
-$('dlg').addEventListener('click', onDialogClick);
+$('dlg').addEventListener('click', async e => { if (e.target.id?.startsWith('lg') && await onLoginClick(e.target)) return; onDialogClick(e); });
+$('hdrLogin').onclick = () => openLogin();
+$('onlineBox').addEventListener('click', onOnlineClick);
 $('rosterBody').addEventListener('toggle', e => {
   const x = e.target; if (!x.matches?.('details[data-line]')) return;
   x.open ? ROSTER_OPEN.add(x.dataset.line) : ROSTER_OPEN.delete(x.dataset.line); LS.set(APP_KEY + '.open', [...ROSTER_OPEN]);

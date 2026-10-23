@@ -1,0 +1,17 @@
+{
+  "hosting": {
+    "site": "fte-plana",
+    "public": "site",
+    "ignore": ["firebase.json", "**/.*"],
+    "headers": [
+      {"source": "**", "headers": [
+        {"key": "Cache-Control", "value": "no-cache"},
+        {"key": "X-Robots-Tag", "value": "noindex, nofollow"},
+        {"key": "Referrer-Policy", "value": "no-referrer"}
+      ]}
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

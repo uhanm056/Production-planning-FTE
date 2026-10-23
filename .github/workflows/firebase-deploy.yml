@@ -1,0 +1,44 @@
+# Po každém začlenění do main nasadí aplikaci na Firebase Hosting (https://fte-plana.web.app)
+# spolu s pravidly Firestore z firestore.rules. Stejný Firebase projekt jako MEC Analyzer.
+# Potřebuje tajemství FIREBASE_SERVICE_ACCOUNT (stejný JSON klíč jako v repozitáři MEC) – postup v README.
+name: Nasazení na Firebase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Sestavení webu
+        run: |
+          mkdir -p site
+          cp index.html site/index.html
+      - name: Chybí tajemství
+        if: env.SA == ''
+        run: echo "::warning::Tajemství FIREBASE_SERVICE_ACCOUNT není nastavené – web se nenasadil. Postup je v README (Online verze)."
+      - uses: actions/setup-node@v4
+        if: env.SA != ''
+        with:
+          node-version: "20"
+      - name: Nasazení (hosting + pravidla Firestore)
+        if: env.SA != ''
+        run: |
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx --yes firebase-tools@13.29.1 deploy --only hosting,firestore:rules --project mec---action-plan --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"
