@@ -390,7 +390,7 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
       <div id="monPreview"></div>
       <p class="note" id="monInfo"></p>
     </div>
-    <div class="head" style="margin-top:2rem"><div><h1>Import rozpisů směn</h1><p>Týdenní rozpisy po linkách (šablona <code>CW_xx_&lt;linka&gt;.xlsx</code>, list <b>CWxx</b>). Lze vybrat všechny soubory najednou.</p></div></div>
+    <div class="head" style="margin-top:2rem"><div><h1>Import rozpisů směn</h1><p>Týdenní rozpisy po linkách výroby i ostatních oddělení – Logistika, Q support, Maintenance (jednotná šablona <code>CW_xx_&lt;linka / oddělení&gt;.xlsx</code>, list <b>CWxx</b>). Lze vybrat všechny soubory najednou.</p></div></div>
     <div class="card">
       <div class="drop" id="dropRoster">Přetáhni sem rozpisy směn (.xlsx) nebo <label>vyber soubory<input type="file" id="rosterInput" accept=".xlsx,.xls" multiple hidden></label></div>
       <div id="rosterPreview"></div>
@@ -422,6 +422,12 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
         <li><b>Potřeba lidí</b> = std hodiny ÷ (hodin na FTE 37,5 × pracovní dny ÷ 5) ÷ efektivita DLE. Pracovní dny bez českých státních svátků (CW44: 28. 10.). Efektivita = Σ std hodin ÷ Σ docházky ze všech listů CWxx v souboru DLE (CW40–42), nebo cílová z parametrů.</li>
         <li><b>Bilance</b> = skutečné DIR procesu (průměr listů CWxx) − potřeba. Tedy: kolik lidí je navíc / chybí proti tomu, kolik proces skutečně používal, když se změní objem.</li>
         <li><b>Rozpis (hlavy)</b> = přítomní operátoři v Rozpisu týdne na linkách procesu – jen orientačně: lidé na 12h směnách odpracují víc hodin a rozpisy nepokrývají procesy DLE přesně (např. Slush+ sewing: 18 v rozpisu vs. 26 DIR).</li>
+      </ul>
+      <h3>Rozpisy ostatních oddělení</h3>
+      <ul>
+        <li>Logistika, Q support a Maintenance používají stejnou šablonu rozpisu (PL-SM-FR-G09-09) a importují se stejně. Oddělení se pozná z nadpisu rozpisu, „Vedení směny“ = vedoucí (jako TL/TR ve výrobě), sloupec „Oblast / linka“ se ukazuje u jména.</li>
+        <li>V Rozpisu týdne je přepínač oddělení a přehled celého závodu. Plán týdne, bilance lidí, DLE, doporučení a skill matrix počítají dál jen s výrobou.</li>
+        <li>Lidé ostatních oddělení na 12 h se převezmou do monitoringu 12h směn (Logistika → oblast Sklad). Kategorie podle pozice ze seznamů sešitů (logistika a údržba IDL).</li>
       </ul>
       <h3>12h směny</h3>
       <ul>
@@ -549,7 +555,7 @@ let STATE = { exports: {}, master: DEFAULT_MASTER(), people: {}, plans: {}, rost
 if (!STATE.master) STATE.master = DEFAULT_MASTER();
 STATE.people ||= {}; STATE.plans ||= {}; STATE.h12 ||= {}; STATE.wk ||= {};
 STATE.planWeek = LS.get(APP_KEY + '.week') || STATE.planWeek || null;
-let VIEW = { outlook: 'load' };
+let VIEW = { outlook: 'load', rdept: LS.get(APP_KEY + '.rdept') || 'Výroba' };
 const M = () => STATE.master;
 const lineById = id => M().lines.find(l => l.id === id);
 const latestKey = () => Object.keys(STATE.exports).sort().at(-1) || null;
@@ -740,8 +746,12 @@ const ROSTER_RULES = [
 ];
 const rosterLine = (title, section) => (ROSTER_RULES.find(r => norm(title).includes(r.t) && (!r.s || norm(section).includes(r.s))) || {}).l || null;
 const SHIFT_CODE = l => { const n = norm(l); return n.startsWith('ranni') ? 'R' : n.startsWith('odpol') ? 'O' : n.startsWith('nocni') ? 'N' : null; };
+// oddělení: rozpisy ostatních oddělení mají stejnou šablonu PL-SM-FR-G09-09 (nadpis „LOGISTIKA CW 43…“)
+const DEPTS = ['Výroba', 'Logistika', 'Q support', 'Maintenance'];
+const rosterDept = title => { const t = norm(title); return /logist/.test(t) ? 'Logistika' : /support q|q support|kvalit|quality/.test(t) ? 'Q support' : /maintenance|udrzb/.test(t) ? 'Maintenance' : 'Výroba'; };
+const deptOfHome = h => h && h.startsWith('g:') && DEPTS.includes(h.slice(2)) ? h.slice(2) : 'Výroba';
 const personKey = n => norm(n).replace(/\./g, '').replace(/\s+/g, ' ');
-const ABS_HEADS = { 'dovolena / nv': 'Dovolená / NV', 'nemoc / ocr': 'Nemoc / OČR', 'sluzebni cesta / skoleni': 'Služební cesta / školení', 'presun / pujceni / konec': 'Přesun / půjčení / konec' };
+const ABS_HEADS = { 'dovolena / nv': 'Dovolená / NV', 'nemoc / ocr': 'Nemoc / OČR', 'sluzebni cesta / skoleni': 'Služební cesta / školení', 'presun / pujceni / konec': 'Přesun / půjčení / konec', 'dovolena': 'Dovolená / NV', 'nemoc': 'Nemoc / OČR' };   // výroba / ostatní oddělení
 
 function parseRoster(wb, fileName){
   const XLSX = window.XLSX;
@@ -769,25 +779,26 @@ function parseRoster(wb, fileName){
     const sk = rows[h0].findIndex((x, k) => k > j && norm(x) === 'skill level');
     let label = '';
     for (let i = h0 - 1; i >= 0 && !label; i--) label = rows[i][j - 1] || '';
-    blocks.push({ c: j - 1, t, sk, label: label || `Směna ${blocks.length + 1}`, code: SHIFT_CODE(label) });
+    blocks.push({ c: j - 1, t, sk, ar: norm(rows[h0][j + 1]).startsWith('oblast') ? j + 1 : -1, label: label || `Směna ${blocks.length + 1}`, code: SHIFT_CODE(label) });
   });
   const codes = blocks.map(b => b.code);
   const rotation = codes.some((c, i) => c && codes.indexOf(c) !== i);
   if (rotation) warnings.push('Rozpis má střídající se posádky (A/B) – lidé za den nejsou součtem bloků, do linek se nepřebírají.');
   // lidé
-  const people = [], placeholders = [];
+  const people = [], placeholders = [], vacant = [];
   let section = '', end = rows.length;
   for (let i = h0; i < rows.length; i++){
     const r = rows[i];
     if (r.some(v => /^po[cč]et lid[ií]|^celkem za den/i.test(v))){ end = i; break; }
     if (norm(r[blocks[0].c + 1]) === 'pozice'){ section = r[blocks[0].c] || section; continue; }
-    const tl = /^tl\s*\/\s*tr$/.test(norm(section));
+    const tl = /^tl\s*\/\s*tr$|^vedeni smeny$/.test(norm(section));
     blocks.forEach((b, bi) => {
-      const raw = r[b.c]; if (!raw) return;
+      const raw = r[b.c];
+      if (!raw){ if (tl && r[b.c + 1]) vacant.push({ shift: b.code || b.label, pos: r[b.c + 1] }); return; }   // neobsazené vedení směny
       const time = b.t >= 0 ? r[b.t] : '';
       raw.replace(/\([^)]*\)/g, ' ').split('+').map(s => s.trim()).filter(Boolean).forEach(n => {
         if (!/[a-zà-ž]/.test(n)){ placeholders.push(`${n} (${b.label})`); return; }
-        people.push({ name: n, key: personKey(n), block: bi, row: i, section, pos: r[b.c + 1] || '', skill: b.sk >= 0 && /^[ZPTN]$/i.test(r[b.sk]) ? r[b.sk].toUpperCase() : '', time, h12: /06:00\s*-\s*18:00|18:00\s*-\s*06:00/.test(time), tl, slot: /\//.test(n) });
+        people.push({ name: n, key: personKey(n), block: bi, row: i, section, pos: r[b.c + 1] || '', area: b.ar >= 0 ? r[b.ar] : '', skill: b.sk >= 0 && /^[ZPTN]$/i.test(r[b.sk]) ? r[b.sk].toUpperCase() : '', time, h12: /06:00\s*-\s*18:00|18:00\s*-\s*06:00/.test(time), tl, slot: /\//.test(n) });
       });
     });
   }
@@ -800,7 +811,7 @@ function parseRoster(wb, fileName){
     if (heads.length || r.some(v => norm(v) === 'legenda')){ cols = heads; continue; }
     cols.forEach(({ j, type }) => { if (r[j] && /[a-zà-ž]/.test(r[j])) absences.push({ name: r[j], type, note: r[j + 1] || '' }); });
   }
-  return { file: fileName, sheet: name, title, week, year, key: `${year}-${String(week).padStart(2,'0')}`, blocks, rotation, people, placeholders, absences, warnings };
+  return { file: fileName, sheet: name, title, dept: rosterDept(title), week, year, key: `${year}-${String(week).padStart(2,'0')}`, blocks, rotation, people, placeholders, absences, warnings, vacant };
 }
 
 // souhrn po linkách: OP po směnách, unikátní lidé za den, 12h, TL/TR
@@ -808,7 +819,7 @@ function rosterSlices(groups){
   const out = [];
   groups.forEach(g => {
     const by = new Map();
-    g.people.filter(p => !p.tl).forEach(p => { const l = g.rotation ? null : rosterLine(g.title, p.section); if (!by.has(l)) by.set(l, []); by.get(l).push(p); });
+    g.people.filter(p => !p.tl).forEach(p => { const l = g.rotation || (g.dept && g.dept !== 'Výroba') ? null : rosterLine(g.title, p.section); if (!by.has(l)) by.set(l, []); by.get(l).push(p); });
     const tl = new Set(g.people.filter(p => p.tl).map(p => p.key)).size;
     [...by.entries()].forEach(([line, ps], i) => {
       const shift = {}; ['R','O','N'].forEach(c => shift[c] = new Set(ps.filter(p => g.blocks[p.block].code === c).map(p => p.key)).size);
@@ -847,7 +858,7 @@ async function handleRosterFiles(files){
     ${groups.length ? `<h2>Náhled rozpisů ${weeks.length === 1 ? wkLabel(weeks[0]) : ''}</h2>
     <div class="tbl-wrap"><table><thead><tr><th>Rozpis</th><th>Soubor</th><th>Linka</th><th class="num">Ranní</th><th class="num">Odpol.</th><th class="num">Noční</th><th class="num">OP za den</th><th class="num">z toho 12h</th><th class="num">TL/TR</th><th>Pozn.</th></tr></thead><tbody>
     ${S.map(s => `<tr><td><b>${esc(s.g.title)}</b>${s.sections.length && !/operatori/.test(norm(s.sections.join())) ? `<div class="note">${esc(s.sections.join(', '))}</div>` : ''}</td><td class="note">${esc(s.g.file)}</td>
-      <td>${s.line ? esc(lineById(s.line)?.name || s.line) : '<span class="tag neutral">bez linky</span>'}</td>
+      <td>${s.line ? esc(lineById(s.line)?.name || s.line) : s.g.dept !== 'Výroba' ? `<span class="tag info">oddělení ${esc(s.g.dept)}</span>` : '<span class="tag neutral">bez linky</span>'}</td>
       <td class="num">${s.shift.R}</td><td class="num">${s.shift.O}</td><td class="num">${s.shift.N}</td><td class="num"><b>${s.g.rotation ? '–' : s.day}</b></td><td class="num">${s.h12}</td><td class="num">${s.tl ?? ''}</td>
       <td class="note">${[...(s.tl != null ? s.g.warnings : []), s.slots ? `${s.slots}× sdílená pozice (jméno/jméno) = 1 člověk` : '', s.tl != null && s.g.placeholders.length ? `nepočítáno: ${s.g.placeholders.join(', ')}` : ''].filter(Boolean).map(esc).join('<br>')}</td></tr>`).join('')}
     </tbody></table></div>
@@ -867,8 +878,9 @@ async function commitRoster(){
   Object.entries(byLine).forEach(([id, n]) => { const l = lineById(id); if (l){ l.avail = n; l.availSrc = 'rozpis'; } });
   const touched = peopleFromGroups(groups, at);
   const std = { ...(STATE.rosterMeta?.std || {}), ...rosterStd(groups) };
-  STATE.rosterMeta = { importedAt: at, weeks: [...new Set(groups.map(g => g.week))], std,
-    groups: groups.map(g => ({ title: g.title, file: g.file, week: g.week, key: g.key, rotation: g.rotation, warnings: g.warnings, placeholders: g.placeholders, people: g.people.length })) };
+  STATE.rosterMeta = { importedAt: at, weeks: [...new Set([...(STATE.rosterMeta?.weeks || []), ...groups.map(g => g.week)])].sort((a, b) => a - b), std,
+    groups: [...(STATE.rosterMeta?.groups || []).filter(o => !groups.some(g => norm(g.title) === norm(o.title))),
+      ...groups.map(g => ({ title: g.title, dept: g.dept, file: g.file, week: g.week, key: g.key, rotation: g.rotation, warnings: g.warnings, placeholders: g.placeholders, vacant: g.vacant, people: g.people.length }))] };
   PENDING_ROSTER = null;
   $('rosterPreview').innerHTML = '<p class="muted">Ukládám lidi…</p>';
   save(); await saveRosterMeta(); const ok = await savePeople([...touched]);
@@ -882,7 +894,7 @@ const SKILLS = ['N', 'T', 'P', 'Z'];   // pořadí při klikání; Z + P = kvali
 const SKILL_TXT = { Z: 'zaškolený / zkušený', P: 'proškolený / samostatný', T: 'trénink', N: 'nástup' };
 const skillRank = s => SKILLS.indexOf(s);
 const qualified = s => s === 'Z' || s === 'P';
-const skillCol = (g, p) => (g.rotation ? null : rosterLine(g.title, p.section)) || 'g:' + g.title;
+const skillCol = (g, p) => g.dept && g.dept !== 'Výroba' ? 'g:' + g.dept : (g.rotation ? null : rosterLine(g.title, p.section)) || 'g:' + g.title;
 const colName = c => c.startsWith('g:') ? c.slice(2) : (lineById(c)?.name || c);
 
 // lidé × sloupce (linky): úroveň z rozpisu, ruční záznam jen tam, kde rozpis nic neuvádí
@@ -942,7 +954,8 @@ const SHIFTS = ['R', 'O', 'N'];
 const SHIFT_TXT = { R: 'Ranní', O: 'Odpolední', N: 'Noční' };
 const ABS_TYPES = ['Dovolená / NV', 'Nemoc / OČR', 'Služební cesta / školení', 'Přesun / půjčení / konec'];
 const peopleList = () => Object.values(STATE.people);
-const operators = () => peopleList().filter(p => p.role !== 'TL');
+const deptOf = p => p.dept || deptOfHome(p.home);
+const operators = () => peopleList().filter(p => p.role !== 'TL' && deptOf(p) === 'Výroba');   // plánování FTE jen pro výrobu
 const hasPeople = () => peopleList().length > 0;
 const skillOf = (p, col) => [p.skills?.[col], p.man?.[col]].filter(Boolean).sort((a, b) => skillRank(b) - skillRank(a))[0] || '';
 
@@ -975,10 +988,10 @@ function peopleFromGroups(groups, importedAt){
       let x = STATE.people[id];
       if (!touched.has(id)){
         const old = x || {};
-        x = STATE.people[id] = { id, name: p.name, row: p.row ?? null, role: p.tl ? 'TL' : 'OP', home: col, shift: b.code || b.label, crew: b.label, pos: p.pos, time: p.time, h12: !!p.h12, slot: !!p.slot,
+        x = STATE.people[id] = { id, name: p.name, row: p.row ?? null, role: p.tl ? 'TL' : 'OP', dept: g.dept || 'Výroba', home: col, shift: b.code || b.label, crew: b.label, pos: p.pos, ...(p.area ? { area: p.area } : {}), time: p.time, h12: !!p.h12, slot: !!p.slot,
           skills: {}, man: old.man || {}, also: [], absences: (old.absences || []).filter(a => a.src !== 'rozpis'), src: `${g.title} CW${g.week}`, updatedAt: importedAt };
         touched.add(id);
-      } else if (x.role === 'TL' && !p.tl){ Object.assign(x, { role: 'OP', home: col, shift: b.code || b.label, crew: b.label, pos: p.pos, time: p.time, h12: !!p.h12 }); }
+      } else if (x.role === 'TL' && !p.tl){ Object.assign(x, { role: 'OP', home: col, shift: b.code || b.label, crew: b.label, pos: p.pos, ...(p.area ? { area: p.area } : {}), time: p.time, h12: !!p.h12 }); }
       else if (col !== x.home && !x.also.includes(col) && !p.tl) x.also.push(col);
       if (p.skill && skillRank(p.skill) > skillRank(x.skills[col] || '')) x.skills[col] = p.skill;
     });
@@ -1025,6 +1038,7 @@ function availOf(line, week){
 function generatePlan(week){
   const cur = STATE.plans[week], P = operators(), assign = {};
   P.forEach(p => { const a = cur?.assign?.[p.id]; assign[p.id] = a?.locked ? { ...a } : { line: p.home, shift: p.shift, ...(a?.h12 != null ? { h12: a.h12 } : {}) }; });
+  Object.entries(cur?.assign || {}).forEach(([id, a]) => { if (!assign[id] && STATE.people[id]) assign[id] = a; });   // ostatní oddělení a vedení: ruční změny zůstávají
   const absent = new Set(P.filter(p => isAbsent(p, week)).map(p => p.id));
   const slots = [];
   M().lines.forEach(l => { const n = needFor(l, week); if (n) SHIFTS.forEach(s => slots.push({ l: l.id, s, need: n[s] || 0 })); });
@@ -1069,7 +1083,7 @@ function personChip(p, week, lineKey, inTable){
   const a = slotOf(p, week), lvl = skillOf(p, lineKey), ab = absencesIn(p, week);
   return `<button class="pchip${a.moved ? ' moved' : ''}" data-person="${esc(p.id)}" title="Upravit: ${esc(p.name)}">
     <span class="sk ${lvl || 'x'}">${lvl || '·'}</span><span class="pn">${esc(p.name)}</span>
-    ${p.pos && !inTable ? `<span class="pp">${esc(p.pos)}</span>` : ''}
+    ${p.pos && !inTable ? `<span class="pp">${esc(p.pos)}</span>` : ''}${p.area ? `<span class="pp">${esc(p.area)}</span>` : ''}
     ${a.moved ? `<span class="badge b">z ${esc(colName(a.from))}${a.fromShift && a.fromShift !== a.shift ? ' ' + a.fromShift : ''}</span>` : ''}
     ${a.locked ? '<span class="badge a">ručně</span>' : ''}${h12Of(p, week) && !inTable ? '<span class="b12">12 h</span>' : ''}
     ${ab.length && !isAbsent(p, week) ? `<span class="badge a">částečně chybí</span>` : ''}</button>`;
@@ -1081,6 +1095,11 @@ function renderRoster(){
   $('rosterTitle').textContent = w ? `Rozpis ${wkLabel(w)}` : 'Rozpis týdne';
   if (!hasPeople()){ el.innerHTML = emptyState('Rozpis se skládá z lidí v aplikaci. Naimportuj jednou rozpisy směn (Import → Import rozpisů směn) – další změny už jen tady.'); return; }
   if (!w){ el.innerHTML = emptyState('Nejdřív naimportuj přehled odvolávek – určí plánovaný týden.'); return; }
+  // přepínač oddělení: výroba = plánování z volume, ostatní oddělení = stejný rozpis pozice × směny
+  const depts = DEPTS.filter(x => x === 'Výroba' || peopleList().some(p => deptOf(p) === x)), tabs = depts.length > 1 ? ['Přehled', ...depts] : depts;
+  const cur = tabs.includes(VIEW.rdept) ? VIEW.rdept : 'Výroba';
+  const chips = tabs.length > 1 ? `<div class="chips">${tabs.map(x => `<button class="chip ${x === cur ? 'active' : ''}" data-rdept="${esc(x)}">${x === 'Přehled' ? 'Přehled oddělení' : esc(x) + ` <span class="muted">${peopleList().filter(p => deptOf(p) === x && !isAbsent(p, w)).length}</span>`}</button>`).join('')}</div>` : '';
+  if (cur !== 'Výroba'){ el.innerHTML = chips + (cur === 'Přehled' ? deptOverview(w) : deptRoster(cur, w)); return; }
   const plan = STATE.plans[w], S = planSummary(w);
   const P = operators(), present = P.filter(p => !isAbsent(p, w)).length, absent = P.length - present;
   const on12 = P.filter(p => !isAbsent(p, w) && h12Of(p, w)).length;
@@ -1145,7 +1164,55 @@ function renderRoster(){
   }).join('');
   const undated = P.flatMap(p => (p.absences || []).filter(a => !a.from).map(a => `${esc(p.name)} – ${esc(a.type)}${a.note ? ': ' + esc(a.note) : ''}`));
   if (undated.length) h += `<details class="card" style="margin-top:12px"><summary class="note">Nepřítomnosti bez data (${undated.length}) – doplň od/do u člověka, jinak se nepočítají</summary><p class="note">${undated.join(' · ')}</p></details>`;
-  el.innerHTML = h;
+  el.innerHTML = chips + h;
+}
+const vacantOf = dept => (STATE.rosterMeta?.groups || []).filter(g => (g.dept || 'Výroba') === dept).flatMap(g => g.vacant || []);
+function deptStats(dept, w){
+  const all = peopleList().filter(p => deptOf(p) === dept), here = all.filter(p => !isAbsent(p, w)), ops = here.filter(p => p.role !== 'TL'), lead = here.filter(p => p.role === 'TL');
+  const sh = s => ops.filter(p => slotOf(p, w).shift === s).length;
+  return { all, ops, lead, absent: all.filter(p => isAbsent(p, w)), R: sh('R'), O: sh('O'), N: sh('N'), h12: here.filter(p => h12Of(p, w)).length, vacant: vacantOf(dept) };
+}
+function deptOverview(w){
+  const rows = DEPTS.map(d => ({ d, ...deptStats(d, w) })).filter(x => x.all.length), T = k => rows.reduce((n, x) => n + (Array.isArray(x[k]) ? x[k].length : x[k]), 0);
+  return `<p class="note">Všechna oddělení ve stejné šabloně rozpisu (pozice × směny, SKILL LEVEL, 12 h, nepřítomnosti) – ${wkLabel(w)}. Lidé = přítomní bez vedení směny.</p>
+    <div class="tbl-wrap"><table><thead><tr><th>Oddělení</th><th class="num">Lidé</th><th class="num">Ranní</th><th class="num">Odpolední</th><th class="num">Noční</th><th class="num">Vedení směny</th><th class="num">Na 12 h</th><th>Podíl 12 h</th><th class="num">Nepřítomní</th><th class="num">Neobsazené vedení</th></tr></thead><tbody>
+    ${rows.map(x => { const n = x.ops.length + x.lead.length; return `<tr><td><button class="rposbtn" data-rdept="${esc(x.d)}">${esc(x.d)}</button></td><td class="num"><b>${x.ops.length}</b></td><td class="num">${x.R}</td><td class="num">${x.O}</td><td class="num">${x.N}</td><td class="num">${x.lead.length}</td><td class="num"><b>${x.h12}</b></td><td><span class="p12"><i style="width:${n ? x.h12 / n * 100 : 0}%"></i></span><span class="p12v">${n ? fmt(x.h12 / n * 100) : 0} %</span></td><td class="num">${x.absent.length || ''}</td><td class="num ${x.vacant.length ? 'neg' : ''}">${x.vacant.length || ''}</td></tr>`; }).join('')}
+    <tr class="tot"><td><b>Závod celkem</b></td><td class="num"><b>${T('ops')}</b></td><td class="num">${T('R')}</td><td class="num">${T('O')}</td><td class="num">${T('N')}</td><td class="num">${T('lead')}</td><td class="num"><b>${T('h12')}</b></td><td></td><td class="num">${T('absent')}</td><td class="num">${T('vacant')}</td></tr></tbody></table></div>`;
+}
+// tabulka pozice × směny se jmény (stejná jako u linek výroby)
+function deptTable(ps, w, home, addBtns){
+  const shown = SHIFTS.filter(sh => addBtns || ps.some(p => slotOf(p, w).shift === sh));
+  const groups = new Map();
+  ps.forEach(p => { const a = slotOf(p, w); if (!shown.includes(a.shift)) return; const k = posThisWeek(p, w) || 'Bez pozice', key = norm(k);
+    if (!groups.has(key)) groups.set(key, { k, row: 1e9, by: {} }); const g = groups.get(key); g.row = Math.min(g.row, p.row ?? 1e9); (g.by[a.shift] ||= []).push(p); });
+  const order = [...groups.values()].sort((a, b) => (a.k === 'Bez pozice') - (b.k === 'Bez pozice') || a.row - b.row || a.k.localeCompare(b.k, 'cs'));
+  let rows = '';
+  order.forEach(g => {
+    shown.forEach(sh => (g.by[sh] ||= []).sort((a, b) => (a.row ?? 1e9) - (b.row ?? 1e9) || a.name.localeCompare(b.name, 'cs')));
+    const n = Math.max(1, ...shown.map(sh => g.by[sh].length));
+    for (let k = 0; k < n; k++) rows += `<tr><td class="rpos">${k === 0 ? esc(g.k) : ''}</td>${shown.map(sh => { const p = g.by[sh][k]; return p ? `<td>${personChip(p, w, home, true)}</td><td class="rlen">${lenBtn(p, w)}</td>` : '<td></td><td class="rlen"></td>'; }).join('')}</tr>`;
+  });
+  if (addBtns) rows += `<tr class="radd"><td></td>${shown.map(sh => `<td colspan="2"><button class="padd" data-add="${esc(home)}" data-shift="${sh}">+ přidat člověka</button></td>`).join('')}</tr>`;
+  const hd = sh => { const x = ps.filter(p => slotOf(p, w).shift === sh), n12 = x.filter(p => h12Of(p, w)).length; return `<th colspan="2">${SHIFT_TXT[sh]} <span class="badge b">${x.length}</span>${n12 ? ` <span class="b12">12 h: ${n12}</span>` : ''}</th>`; };
+  return shown.length ? `<div class="tbl-wrap rtab-wrap"><table class="rtab"><colgroup><col class="cpos">${shown.map(() => '<col><col class="clen">').join('')}</colgroup><thead><tr><th>Pozice</th>${shown.map(hd).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="note">Nikdo.</p>';
+}
+function deptRoster(dept, w){
+  const S = deptStats(dept, w), home = 'g:' + dept, n = S.ops.length + S.lead.length;
+  const vac = S.vacant.reduce((m, v) => { (m[v.pos] ||= []).push(v.shift); return m; }, {});
+  const other = S.ops.concat(S.lead).filter(p => !SHIFTS.includes(slotOf(p, w).shift));
+  const dd = s => `${+s.slice(8)}. ${+s.slice(5, 7)}.`;
+  return `<div class="grid-kpi">
+      <div class="card kpi"><div class="lbl">Lidé ${esc(dept)}</div><div class="val">${fmt(S.ops.length)}</div><div class="sub">přítomní ${wkLabel(w)}, bez vedení směny</div></div>
+      <div class="card kpi"><div class="lbl">Ranní / odpol. / noční</div><div class="val">${S.R} / ${S.O} / ${S.N}</div><div class="sub">lidé podle směny</div></div>
+      <div class="card kpi ${S.vacant.length ? 'alert' : 'ok'}"><div class="lbl">Vedení směny</div><div class="val">${fmt(S.lead.length)}</div><div class="sub">${S.vacant.length ? `neobsazeno ${S.vacant.length} ${pl(S.vacant.length, 'místo', 'místa', 'míst')}` : 'všechna místa obsazená'}</div></div>
+      <div class="card kpi k12"><div class="lbl">Na 12 h</div><div class="val">${fmt(S.h12)}</div><div class="sub">z ${fmt(n)} (${n ? fmt(S.h12 / n * 100) : 0} %) · převezmi do monitoringu 12h směn</div></div>
+      <div class="card kpi ${S.absent.length ? 'alert' : ''}"><div class="lbl">Nepřítomní</div><div class="val">${fmt(S.absent.length)}</div><div class="sub">dovolená, nemoc, školení (3+ dny)</div></div>
+    </div>
+    <div class="card rline" style="border-left-color:var(--navy)"><div class="rtop"><h3>Vedení směny</h3></div><div class="rbody">${deptTable(S.lead, w, home, false)}
+      ${Object.keys(vac).length ? `<div class="warnbox" style="margin-top:8px"><b>Neobsazené vedení směny:</b> ${Object.entries(vac).map(([pos, sh]) => `${esc(pos)} (${sh.map(x => SHIFT_TXT[x] || x).join(', ')})`).join(' · ')}</div>` : ''}</div></div>
+    <div class="card rline"><div class="rtop"><h3>${esc(dept)}</h3><span class="note">pozice × směny · oblast / linka u jména · klik na jméno = změna směny, pozice, nepřítomnost</span></div><div class="rbody">${deptTable(S.ops, w, home, true)}
+      ${other.length ? `<div class="note" style="margin-top:.4rem">Jiné směny: ${other.map(p => personChip(p, w, home)).join('')}</div>` : ''}
+      ${S.absent.length ? `<div class="rabs"><b>Nepřítomní:</b> ${S.absent.map(p => `<button class="pchip absent" data-person="${esc(p.id)}"><span class="pn">${esc(p.name)}</span><span class="pp">${esc(absencesIn(p, w).map(a => a.type.split(' /')[0] + (a.to ? ' do ' + dd(a.to) : '')).join(', '))}</span></button>`).join('')}</div>` : ''}</div></div>`;
 }
 
 // okno pro úpravu člověka / přidání / potřeby linky
@@ -1254,7 +1321,7 @@ async function onDialogClick(e){
     p.absences.splice(+t.dataset.delabs, 1); await savePeople([id]); openPerson(id); renderAll();
   } else if (t.id === 'fHomeSave' && p){
     const h12 = $('fHLen').value === '12';
-    Object.assign(p, { home: $('fHome').value, shift: $('fHShift').value, pos: $('fPos').value.trim(), h12, time: SHIFT_TIME[h12 ? 12 : 8][$('fHShift').value] || p.time, updatedAt: new Date().toISOString() });
+    Object.assign(p, { home: $('fHome').value, dept: deptOfHome($('fHome').value), shift: $('fHShift').value, pos: $('fPos').value.trim(), h12, time: SHIFT_TIME[h12 ? 12 : 8][$('fHShift').value] || p.time, updatedAt: new Date().toISOString() });
     await savePeople([id]); dl.close(); renderAll(); toast(`${p.name}: domovská linka ${colName(p.home)}`);
   } else if (t.id === 'fDel' && p){
     if (!armed(t)) return;
@@ -1264,7 +1331,7 @@ async function onDialogClick(e){
     if (!name){ $('aErr').textContent = 'Vyplň jméno.'; return; }
     if (STATE.people[nid]){ $('aErr').textContent = 'Člověk s tímto jménem už v aplikaci je – najdi ho v rozpisu.'; return; }
     const line = $('aLine').value, sk = $('aSkill').value;
-    STATE.people[nid] = { id: nid, name, role: 'OP', home: line, shift: $('aShift').value, crew: SHIFT_TXT[$('aShift').value], pos: $('aPos').value.trim(), time: SHIFT_TIME[$('aLen').value][$('aShift').value] || '', h12: $('aLen').value === '12', slot: false, skills: sk ? { [line]: sk } : {}, man: {}, also: [], absences: [], src: 'aplikace', updatedAt: new Date().toISOString() };
+    STATE.people[nid] = { id: nid, name, role: 'OP', dept: deptOfHome(line), home: line, shift: $('aShift').value, crew: SHIFT_TXT[$('aShift').value], pos: $('aPos').value.trim(), time: SHIFT_TIME[$('aLen').value][$('aShift').value] || '', h12: $('aLen').value === '12', slot: false, skills: sk ? { [line]: sk } : {}, man: {}, also: [], absences: [], src: 'aplikace', updatedAt: new Date().toISOString() };
     await savePeople([nid]); dl.close(); renderAll(); toast(`Přidáno: ${name}`);
   } else if (t.id === 'nSave' || t.id === 'nReset'){
     const l = lineById($('nForm').dataset.id);
@@ -1652,7 +1719,14 @@ function h12FromRoster(week){
   const on = peopleList().filter(p => !isAbsent(p, week) && h12Of(p, week));
   return { on, missing: on.filter(p => !inMon.has(nameKey(p.name))) };
 }
-const h12RowFromPerson = (p, week) => ({ area: 'Výroba', name: p.name, pos: posThisWeek(p, week) || '', cat: p.role === 'TL' ? 'IDL' : 'DL', line: colName(slotOf(p, week).line), n: null, type: '', reason: '', detail: '', measure: '', until: '', appr: '', pmNote: '', src: 'rozpis', pid: p.id });
+const H12_AREA = { 'Logistika': 'Sklad' };   // oblast sešitu 12h (Sklad = logistika, vlastník Milan Lízala)
+function catOfPerson(p, week){
+  const d = deptOf(p), pos = posThisWeek(p, week) || p.pos || '';
+  if (p.role === 'TL') return 'IDL';
+  if (d === 'Výroba') return 'DL';
+  return [...(MON().h12.pos[H12_AREA[d] || d] || []), ...(MON().wk.pos[d] || [])].find(x => norm(x[0]) === norm(pos))?.[1] || (d === 'Q support' ? '' : 'IDL');
+}
+const h12RowFromPerson = (p, week) => ({ area: H12_AREA[deptOf(p)] || deptOf(p), name: p.name, pos: posThisWeek(p, week) || '', cat: catOfPerson(p, week), line: p.area || colName(slotOf(p, week).line), n: null, type: '', reason: '', detail: '', measure: '', until: '', appr: '', pmNote: '', src: 'rozpis', pid: p.id });
 
 /* Víkendy: hodiny ze směny (minus přestávka nad 6 h na místě); náklad = hodiny × sazba × (1 + příplatek) + odměna za směnu ÷ kurz, pohotovost = hodiny × sazba × % */
 const wkCat = r => r.cat || (MON().wk.pos[r.dept] || []).find(x => norm(x[0]) === norm(r.pos))?.[1] || '';
@@ -2148,8 +2222,8 @@ function renderH12(){
   $('h12Weeks').innerHTML = chipRow(ws, w, 'data-h12w', wkLabel);
   const S = h12Summary(w), T = S.tot, R = h12FromRoster(w);
   let h = '';
-  if (R?.missing.length) h += `<div class="warnbox"><b>Rozpis týdne ${wkLabel(w)}:</b> na 12 h je ${R.on.length} ${pl(R.on.length, 'člověk', 'lidé', 'lidí')}, z toho <b>${R.missing.length}</b> v monitoringu chybí (${R.missing.slice(0, 6).map(p => esc(p.name)).join(', ')}${R.missing.length > 6 ? '…' : ''}).
-    <div class="btns" style="margin-top:6px"><button class="btn small" id="h12Take">Převzít z rozpisu (${R.missing.length})</button></div><div class="note">Převezme jméno, linku, pozici a kategorii (TL = IDL, ostatní DL). Počet směn, důvod a opatření doplní vlastník oblasti.</div></div>`;
+  if (R?.missing.length) h += `<div class="warnbox"><b>Rozpis týdne ${wkLabel(w)} (všechna oddělení):</b> na 12 h je ${R.on.length} ${pl(R.on.length, 'člověk', 'lidé', 'lidí')}, z toho <b>${R.missing.length}</b> v monitoringu chybí (${R.missing.slice(0, 6).map(p => esc(p.name)).join(', ')}${R.missing.length > 6 ? '…' : ''}).
+    <div class="btns" style="margin-top:6px"><button class="btn small" id="h12Take">Převzít z rozpisu (${R.missing.length})</button></div><div class="note">Převezme jméno, oblast, linku, pozici a kategorii (výroba DL, TL a logistika / údržba IDL). Počet směn, důvod a opatření doplní vlastník oblasti.</div></div>`;
   else if (R?.on.length) h += `<div class="infobox">Všech ${R.on.length} lidí na 12 h z Rozpisu týdne ${wkLabel(w)} je v monitoringu.</div>`;
   if (!S.rows.length){ el.innerHTML = h + emptyMon('12h směny', `V ${wkLabel(w)} zatím nikdo není. Nahraj sešit <b>Kontrola_12h_smen</b> v Importu, převezmi lidi z Rozpisu týdne, nebo přidej řádek.`); return; }
   const noN = S.rows.filter(x => x.noShifts).length;
@@ -2337,7 +2411,7 @@ function onMonDialogChange(e){
   const p = peopleList().find(x => nameKey(x.name) === nameKey(e.target.value)); if (!p) return;
   const w = id === 'hName' ? h12Week() : weekOfDate(wkSat()), pre = id[0];
   const set = (f, v) => { const el = $(pre + f); if (el && !el.value && v) el.value = v; };
-  set('Pos', posThisWeek(p, w) || p.pos); set('Line', colName(slotOf(p, w).line)); set('Cat', p.role === 'TL' ? 'IDL' : 'DL');
+  set('Pos', posThisWeek(p, w) || p.pos); set('Line', p.area || colName(slotOf(p, w).line)); set('Cat', catOfPerson(p, w));
 }
 
 /* import sešitů monitoringu */
@@ -2407,6 +2481,7 @@ $('homeBody').addEventListener('change', e => { if (e.target.id !== 'homeWeek') 
 $('weekChips').addEventListener('click', e => { const b = e.target.closest('[data-week]'); if (!b) return; setPlanWeek(b.dataset.week); renderAll(); });
 $('rosterWeeks').addEventListener('click', e => { const b = e.target.closest('[data-week]'); if (!b) return; setPlanWeek(b.dataset.week); renderAll(); });
 $('rosterBody').addEventListener('click', e => {
+  const rd = e.target.closest('[data-rdept]'); if (rd){ VIEW.rdept = rd.dataset.rdept; LS.set(APP_KEY + '.rdept', VIEW.rdept); renderRoster(); return; }
   const c = e.target.closest('[data-person]'); if (c){ openPerson(c.dataset.person); return; }
   const a = e.target.closest('[data-add]'); if (a){ openAdd(a.dataset.add, a.dataset.shift); return; }
   const ln = e.target.closest('[data-len]');
