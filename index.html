@@ -244,6 +244,13 @@ dialog#dlg::backdrop{background:rgba(16,32,48,.45)}
 .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;min-width:80px}
 .bar i{display:block;height:100%;background:var(--good)}
 .bar i.warn{background:var(--warn)} .bar i.crit{background:var(--crit)}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:0 18px}
+.mtbl{max-height:70vh;overflow:auto} .mtbl td.wrap{min-width:180px;max-width:320px}
+tr.tot td{border-top:2px solid var(--line);font-weight:600} tr.cur td{background:var(--navy-soft)} tr.rej td{opacity:.5;text-decoration:line-through} tr.rej td:nth-last-child(-n+3){text-decoration:none;opacity:1}
+.p12.wide{width:100%;max-width:360px}
+select.sel-appr{min-width:118px} select.sel-appr.ok{background:var(--good-soft);color:var(--good);font-weight:600} select.sel-appr.no{background:var(--crit-soft);color:var(--crit);font-weight:600}
+.cfb{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tile.orange::before{background:var(--h12)} .tile.orange .tv{color:var(--h12-text)}
 .meth p,.meth li{max-width:860px}
 code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);padding:.05rem .3rem;border-radius:4px}
 @media (max-width:760px){
@@ -274,6 +281,8 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
   <div id="navtabs" class="hide">
     <button data-go="plan">Plán týdne</button>
     <button data-go="roster">Rozpis týdne</button>
+    <button data-go="h12">12h směny</button>
+    <button data-go="wkend">Víkendy</button>
     <button data-go="reco">Doporučení</button>
     <button data-go="outlook">Výhled 12 t.</button>
     <button data-go="skills">Skill matrix</button>
@@ -304,6 +313,22 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
       <div class="btns"><button class="btn" id="btnPlanGen">Sestavit rozpis</button><button class="btn secondary" id="btnPersonAdd">+ Přidat člověka</button></div></div>
     <div class="chips" id="rosterWeeks"></div>
     <div id="rosterBody"></div>
+  </section>
+
+  <!-- 12H SMĚNY -->
+  <section data-view="h12">
+    <div class="head"><div><h1>12h směny</h1><p>Kdo jde na 12h směnu, proč, co ji ukončí a kolik to stojí. Lidé s 12 h v Rozpisu týdne se převezmou jedním klikem, PM schvaluje přímo v tabulce.</p></div>
+      <div class="btns"><button class="btn" id="h12Add">+ Přidat řádek</button></div></div>
+    <div class="chips" id="h12Weeks"></div>
+    <div id="h12Body"></div>
+  </section>
+
+  <!-- VÍKENDY -->
+  <section data-view="wkend">
+    <div class="head"><div><h1>Víkendové směny</h1><p>Rozpis práce Pá–Ne po odděleních, potvrzení manažerů, schválení PM, náklad a kontrola neplánovaně přítomných.</p></div>
+      <div class="btns"><button class="btn" id="wkAdd">+ Přidat řádek</button></div></div>
+    <div class="chips" id="wkSats"></div>
+    <div id="wkBody"></div>
   </section>
 
   <section data-view="reco">
@@ -359,6 +384,12 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
       <div id="dlePreview"></div>
       <p class="note" id="dleInfo"></p>
     </div>
+    <div class="head" style="margin-top:2rem"><div><h1>Import 12h směn a víkendů</h1><p>Sešity <code>Kontrola_12h_smen_Plana.xlsx</code> a <code>Vikendovy_rozpis_Plana.xlsx</code> – jednorázově převezme historii, sazby a seznamy. Dál se dá vše zadávat přímo v aplikaci.</p></div></div>
+    <div class="card">
+      <div class="drop" id="dropMon">Přetáhni sem sešit 12h směn nebo víkendový rozpis (.xlsx) nebo <label>vyber soubory<input type="file" id="monInput" accept=".xlsx,.xlsm,.xls" multiple hidden></label></div>
+      <div id="monPreview"></div>
+      <p class="note" id="monInfo"></p>
+    </div>
     <div class="head" style="margin-top:2rem"><div><h1>Import rozpisů směn</h1><p>Týdenní rozpisy po linkách (šablona <code>CW_xx_&lt;linka&gt;.xlsx</code>, list <b>CWxx</b>). Lze vybrat všechny soubory najednou.</p></div></div>
     <div class="card">
       <div class="drop" id="dropRoster">Přetáhni sem rozpisy směn (.xlsx) nebo <label>vyber soubory<input type="file" id="rosterInput" accept=".xlsx,.xls" multiple hidden></label></div>
@@ -391,6 +422,21 @@ code{font-family:Consolas,monospace;font-size:.88em;background:var(--navy-soft);
         <li><b>Potřeba lidí</b> = std hodiny ÷ (hodin na FTE 37,5 × pracovní dny ÷ 5) ÷ efektivita DLE. Pracovní dny bez českých státních svátků (CW44: 28. 10.). Efektivita = Σ std hodin ÷ Σ docházky ze všech listů CWxx v souboru DLE (CW40–42), nebo cílová z parametrů.</li>
         <li><b>Bilance</b> = skutečné DIR procesu (průměr listů CWxx) − potřeba. Tedy: kolik lidí je navíc / chybí proti tomu, kolik proces skutečně používal, když se změní objem.</li>
         <li><b>Rozpis (hlavy)</b> = přítomní operátoři v Rozpisu týdne na linkách procesu – jen orientačně: lidé na 12h směnách odpracují víc hodin a rozpisy nepokrývají procesy DLE přesně (např. Slush+ sewing: 18 v rozpisu vs. 26 DIR).</li>
+      </ul>
+      <h3>12h směny</h3>
+      <ul>
+        <li><b>Hodiny navíc</b> = počet 12h směn v týdnu × placené hodiny navíc za směnu (4 h = 12 h proti 8 h). <b>Náklad</b> = hodiny navíc × sazba DL nebo IDL × (1 + příplatek 25 %). Kategorie z řádku, jinak podle pozice ze seznamu.</li>
+        <li><b>Týdnů po sobě</b> = kolik týdnů za sebou je stejný člověk v monitoringu (jméno bez ohledu na pořadí). Limity: ≥ 5 směn za týden (60 h nad průměr 48 h), ≥ 4 týdny po sobě.</li>
+        <li><b>Bez opatření</b> = typ není „Jednorázově“ a opatření (co 12h ukončí) chybí. <b>Čeká na PM</b> = schválení prázdné nebo „Doplnit“.</li>
+        <li><b>Z rozpisu</b>: lidé s 12 h v Rozpisu týdne (přítomní), kteří v monitoringu chybí, se dají převzít jedním klikem – počet směn, důvod a opatření doplní vlastník oblasti.</li>
+      </ul>
+      <h3>Víkendové směny</h3>
+      <ul>
+        <li><b>Hodiny</b> = délka směny podle časů v nastavení (Jiný čas = zapsaný čas), u práce na místě nad 6 h minus přestávka 0,5 h. Datum = den, kdy směna začíná.</li>
+        <li><b>Náklad</b> = hodiny × sazba DL / IDL / SAL × (1 + příplatek 35 %) + odměna za směnu (Kč ÷ kurz). Pohotovost = hodiny × sazba × 10 %. Zamítnuté řádky se nepočítají, archivní mají hodnoty zmrazené.</li>
+        <li><b>Lidé a směny na místě</b> = řádky s režimem „Na místě“ (bez zamítnutých). Řádek bez režimu se do lidí nepočítá, do nákladu ano – stejně jako v sešitu.</li>
+        <li><b>Stav rozpisu</b>: potvrzení manažera „Odesláno ke schválení“ → Schváleno, když nic nečeká na PM; „Nikdo nepůjde“; bez potvrzení po uzávěrce (čtvrtek 12:00) = NEODESLÁNO – po termínu.</li>
+        <li><b>Nepřímé na 1 DL</b> = směny nepřímých (IDL + SAL) na místě ÷ směny DL na místě; cíl PM ≤ 0,25. Neplánovaně přítomní se počítají sazbou s příplatkem a odměnou.</li>
       </ul>
       <h3>Doporučení – pravidla</h3>
       <ol>
@@ -499,9 +545,9 @@ function rag(cur, prev){
 }
 
 /* ===== 4. Stav ===== */
-let STATE = { exports: {}, master: DEFAULT_MASTER(), people: {}, plans: {}, rosterMeta: null, dle: null, ...(LS.get(APP_KEY) || {}) };
+let STATE = { exports: {}, master: DEFAULT_MASTER(), people: {}, plans: {}, rosterMeta: null, dle: null, mon: null, h12: {}, wk: {}, ...(LS.get(APP_KEY) || {}) };
 if (!STATE.master) STATE.master = DEFAULT_MASTER();
-STATE.people ||= {}; STATE.plans ||= {};
+STATE.people ||= {}; STATE.plans ||= {}; STATE.h12 ||= {}; STATE.wk ||= {};
 STATE.planWeek = LS.get(APP_KEY + '.week') || STATE.planWeek || null;
 let VIEW = { outlook: 'load' };
 const M = () => STATE.master;
@@ -510,7 +556,7 @@ const latestKey = () => Object.keys(STATE.exports).sort().at(-1) || null;
 const prevKey = () => Object.keys(STATE.exports).sort().at(-2) || null;
 
 // zápisy: lokálně celý stav, ve sdílené db jen změněný dokument
-const persistLocal = () => DB ? true : LS.set(APP_KEY, { exports: STATE.exports, master: STATE.master, people: STATE.people, plans: STATE.plans, rosterMeta: STATE.rosterMeta, dle: STATE.dle });
+const persistLocal = () => DB ? true : LS.set(APP_KEY, { exports: STATE.exports, master: STATE.master, people: STATE.people, plans: STATE.plans, rosterMeta: STATE.rosterMeta, dle: STATE.dle, mon: STATE.mon, h12: STATE.h12, wk: STATE.wk });
 async function dbWrite(fn){
   try{ await fn(); return true; }
   catch(e){
@@ -559,7 +605,7 @@ async function connectDb(){
   if (!window.claude?.use) return;
   const db = await window.claude.use('db').catch(() => null); if (!db) return;
   DB = db;
-  STATE = { ...STATE, exports: {}, people: {}, plans: {}, rosterMeta: null, dle: null, master: DEFAULT_MASTER() };
+  STATE = { ...STATE, exports: {}, people: {}, plans: {}, rosterMeta: null, dle: null, master: DEFAULT_MASTER(), mon: null, h12: {}, wk: {} };
   $('hdrSync').textContent = 'sdíleno · stejná data pro všechny';
   const err = e => { console.warn('db snapshot', e); if (e?.code === 'revoked' || e?.code === 'not_granted') $('hdrSync').textContent = 'jen čtení'; };
   db.doc('app/master').onSnapshot(s => { const js = JSON.stringify(s.data() ?? null); if (js === lastMasterJSON) return; lastMasterJSON = js; STATE.master = s.exists ? clone(s.data()) : DEFAULT_MASTER(); scheduleRender(); }, err);
@@ -568,6 +614,9 @@ async function connectDb(){
   db.collection('exports').onSnapshot(q => { STATE.exports = Object.fromEntries(q.docs.map(d => [d.id, d.data()])); fixPlanWeek(); scheduleRender(); }, err);
   db.collection('people').onSnapshot(q => { STATE.people = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
   db.collection('plans').onSnapshot(q => { STATE.plans = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
+  db.doc('app/monitor').onSnapshot(s => { STATE.mon = s.exists ? clone(s.data()) : null; scheduleRender(); }, err);
+  db.collection('h12').onSnapshot(q => { STATE.h12 = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
+  db.collection('weekend').onSnapshot(q => { STATE.wk = Object.fromEntries(q.docs.map(d => [d.id, clone(d.data())])); scheduleRender(); }, err);
 }
 function fixPlanWeek(){
   const lk = latestKey(); if (!lk) return;
@@ -1177,6 +1226,7 @@ async function ensurePlan(w){ if (!STATE.plans[w]){ STATE.plans[w] = generatePla
 async function onDialogClick(e){
   const dl = $('dlg'), t = e.target, w = STATE.planWeek;
   if (t.id === 'fClose'){ dl.close(); return; }
+  if (await onMonDialog(t)) return;
   if (t.id === 'rnSave'){
     const f = $('rnForm'), to = $('rnName').value.trim();
     if (to === f.dataset.pos){ dl.close(); return; }
@@ -1520,6 +1570,249 @@ function recommend(exKey, week){
   return [...dleRecos(week), ...recos];
 }
 
+/* ----- Monitoring 12h směn a víkendové práce (sešity Kontrola_12h_smen a Vikendovy_rozpis) ----- */
+// výchozí nastavení = listy Nastavení / Seznamy obou sešitů; import sešitu je přepíše
+const MON_DEFAULT = () => ({
+  h12: { rate: { DL: 18.95, IDL: 22.9 }, extraH: 4, prem: 0.25, fx: 24.5, limWeek: 5, limRun: 4,
+    areas: [['Výroba', 'Milan Hanus'], ['Sklad', 'Milan Lízala'], ['Maintenance', 'David Varhan']],
+    reasons: ['Neobsazená pozice (chybí HC)', 'Absence – nemoc / OČR', 'Dovolená', 'Odchod / fluktuace', 'Zaučování nových lidí', 'Zákaznická poptávka / backlog', 'Recovery plán (zákazník)', 'Výpadek stroje – dohánění', 'Směnový model linky (nelze 4 týmy)', 'Jiné (popsat)'],
+    types: ['Trvalý model', 'Dočasně (do termínu)', 'Jednorázově'], lines: [], pos: {} },
+  wk: { rate: { DL: 18.95, IDL: 22.9, SAL: 33.71 }, prem: 0.35, bonus: { DL: 500, IDL: 1000, SAL: 0 }, standby: 0.1, fx: 24.5, brk: 0.5, cutDays: 2, cutTime: '12:00', limInd: 0.25,
+    depts: [['Výroba', 'Milan Hanus'], ['Logistika', 'Milan Lízala'], ['Q support', 'Sebastian Sirek'], ['Quality', 'Roman Zúbek'], ['Engineering', 'David Varhan'], ['Maintenance', 'David Varhan']],
+    reasons: ['Zákaznická poptávka / backlog', 'Recovery plán (zákazník)', 'Porucha / oprava zařízení', 'Preventivní údržba / TPM', 'Projekt / launch / zkoušky', 'Třídění / kontrola kvality', 'Inventura / logistika', 'Hotline / podpora směny', 'Jiné (popsat ve výstupu)'],
+    shifts: [['Ranní', '06:00', '14:00'], ['Odpolední', '14:00', '22:00'], ['Noční', '22:00', '06:00'], ['Ranní 12 h', '06:00', '18:00'], ['Noční 12 h', '18:00', '06:00'], ['Celý den (24 h)', '06:00', '06:00']],
+    lines: [], pos: {} }
+});
+const MON_DEF = MON_DEFAULT();
+const MON = () => STATE.mon || MON_DEF;
+const APPR = ['Schváleno', 'Zamítnuto', 'Doplnit'];
+const WK_MODES = ['Na místě', 'Pohotovost'];
+const live = o => Object.values(o || {}).filter(Boolean);
+const h12Rows = w => live(STATE.h12[w]?.rows);
+const wkRows = s => live(STATE.wk[s]?.rows);
+const wkUnpl = s => live(STATE.wk[s]?.unpl);
+const nameKey = n => personKey(n).split(' ').sort().join(' ');   // „Novák Jan“ = „Jan Novák“
+const isoD = d => d.toISOString().slice(0, 10);
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return isoD(d); };
+const satOf = s => addDays(s, 6 - (new Date(s + 'T00:00:00Z').getUTCDay() || 7));   // Po–So → sobota téhož týdne, Ne → předchozí sobota
+const dmy = s => s ? `${+s.slice(8, 10)}. ${+s.slice(5, 7)}.` : '';
+const DAY_TXT = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+const dayOf = s => DAY_TXT[new Date(s + 'T00:00:00Z').getUTCDay()];
+const todayIso = () => { const d = new Date(); return isoD(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))); };
+const weekOfDate = s => isoWeekKey(new Date(s + 'T00:00:00Z'));
+const prevWeek = k => weekOfDate(addDays(weekDays(k)[0], -7));
+const tmin = s => { const m = String(s ?? '').match(/(\d{1,2})[:.](\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
+const spanH = (a, b) => { if (a == null || b == null) return 0; const d = ((b - a) % 1440 + 1440) % 1440; return d === 0 ? 24 : d / 60; };
+const hhmm = v => { if (typeof v === 'number'){ const m = Math.round((v % 1) * 1440) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; } const t = tmin(v); return t == null ? '' : hhmm(t / 1440); };
+function cellDate(v){
+  if (v === '' || v == null) return null;
+  if (typeof v === 'number' || v instanceof Date) return isoD(excelDate(v));
+  const m = String(v).match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  const i = String(v).match(/\d{4}-\d{2}-\d{2}/); return i ? i[0] : null;
+}
+
+// zápisy: nastavení celé, řádky po jednom (merge, ať si manažeři nepřepisují práci); smazaný řádek = null
+const saveMon = () => DB ? dbWrite(() => DB.doc('app/monitor').set(STATE.mon)) : persistLocal();
+const monBox = (coll, key) => coll === 'h12' ? (STATE.h12[key] ||= { week: key, rows: {} }) : (STATE.wk[key] ||= { sat: key, rows: {}, confirm: {}, unpl: {} });
+const saveMonDoc = (coll, key) => DB ? dbWrite(() => DB.doc(coll + '/' + key).set(monBox(coll, key))) : persistLocal();
+function saveMonPart(coll, key, part, id){
+  if (!DB) return persistLocal();
+  const box = monBox(coll, key), ref = DB.doc(coll + '/' + key);
+  return dbWrite(async () => { try{ await ref.update({ [part]: { [id]: box[part][id] ?? null } }); } catch(e){ if (e?.code !== 'invalid_argument') throw e; await ref.set(box); } });
+}
+
+/* 12h směny: hodiny navíc = směny × placené hodiny navíc; náklad = hodiny × sazba DL/IDL × (1 + příplatek) */
+const h12Cat = r => r.cat || (MON().h12.pos[r.area] || []).find(x => norm(x[0]) === norm(r.pos))?.[1] || '';
+const h12Hours = r => (r.n || 0) * MON().h12.extraH;
+const h12Cost = r => { const H = MON().h12; return h12Hours(r) * (h12Cat(r) === 'DL' ? H.rate.DL : H.rate.IDL) * (1 + H.prem); };
+const h12Weeks = () => Object.keys(STATE.h12).filter(w => h12Rows(w).length).sort();
+function h12Run(week, name, cache){
+  const k0 = nameKey(name); let n = 0, k = week;
+  const has = w => (cache[w] ||= new Set(h12Rows(w).map(r => nameKey(r.name)))).has(k0);
+  while (n < 104 && has(k)){ n++; k = prevWeek(k); }
+  return n;
+}
+function h12Summary(week){
+  const H = MON().h12, cache = {};
+  const rows = h12Rows(week).map(r => {
+    const cat = h12Cat(r), hours = h12Hours(r), cost = h12Cost(r), run = h12Run(week, r.name, cache);
+    return { r, cat, hours, cost, run, overN: (r.n || 0) >= H.limWeek, overRun: run >= H.limRun, noMeasure: r.type !== 'Jednorázově' && String(r.measure || '').trim().length < 5, pending: !r.appr || r.appr === 'Doplnit', noShifts: !(r.n > 0) };
+  });
+  const agg = (key, list) => { const m = new Map(); rows.forEach(x => { const k = key(x) || ''; const a = m.get(k) || { k, people: 0, n: 0, nDL: 0, nIDL: 0, hours: 0, cost: 0, perm: 0, noMeasure: 0, overN: 0, overRun: 0, pending: 0 };
+    a.people++; a.n += x.r.n || 0; a[x.cat === 'DL' ? 'nDL' : 'nIDL'] += x.r.n || 0; a.hours += x.hours; a.cost += x.cost; a.perm += x.r.type === 'Trvalý model'; a.noMeasure += x.noMeasure; a.overN += x.overN; a.overRun += x.overRun; a.pending += x.pending; m.set(k, a); });
+    (list || []).forEach(k => { if (!m.has(k)) m.set(k, { k, people: 0, n: 0, nDL: 0, nIDL: 0, hours: 0, cost: 0, perm: 0, noMeasure: 0, overN: 0, overRun: 0, pending: 0 }); });
+    return [...m.values()]; };
+  const tot = agg(() => 'Celkem', ['Celkem'])[0];
+  return { week, rows, tot, areas: agg(x => x.r.area, H.areas.map(a => a[0])), reasons: agg(x => x.r.reason).sort((a, b) => b.cost - a.cost), lines: agg(x => x.r.line).sort((a, b) => b.n - a.n) };
+}
+// propojení s Rozpisem týdne: lidé s 12 h v rozpisu, kteří v monitoringu chybí
+function h12FromRoster(week){
+  if (!hasPeople() || !week) return null;
+  const inMon = new Set(h12Rows(week).map(r => nameKey(r.name)));
+  const on = peopleList().filter(p => !isAbsent(p, week) && h12Of(p, week));
+  return { on, missing: on.filter(p => !inMon.has(nameKey(p.name))) };
+}
+const h12RowFromPerson = (p, week) => ({ area: 'Výroba', name: p.name, pos: posThisWeek(p, week) || '', cat: p.role === 'TL' ? 'IDL' : 'DL', line: colName(slotOf(p, week).line), n: null, type: '', reason: '', detail: '', measure: '', until: '', appr: '', pmNote: '', src: 'rozpis', pid: p.id });
+
+/* Víkendy: hodiny ze směny (minus přestávka nad 6 h na místě); náklad = hodiny × sazba × (1 + příplatek) + odměna za směnu ÷ kurz, pohotovost = hodiny × sazba × % */
+const wkCat = r => r.cat || (MON().wk.pos[r.dept] || []).find(x => norm(x[0]) === norm(r.pos))?.[1] || '';
+function wkTimes(r){
+  if (r.shift === 'Jiný čas'){ const m = String(r.other || '').match(/(\d{1,2}[:.]\d{2})\s*[-–]\s*(\d{1,2}[:.]\d{2})/); return m ? [tmin(m[1]), tmin(m[2])] : [null, null]; }
+  const s = MON().wk.shifts.find(x => x[0] === r.shift); return s ? [tmin(s[1]), tmin(s[2])] : [null, null];
+}
+const netH = (h, onSite) => Math.max(0, h - (onSite && h > 6 ? MON().wk.brk : 0));
+const wkHours = r => r.fix ? r.fix.h : netH(spanH(...wkTimes(r)), r.mode !== 'Pohotovost');
+function wkCost(r){
+  if (r.fix) return r.fix.c;
+  const W = MON().wk, c = wkCat(r), rate = W.rate[c] || 0, h = wkHours(r);
+  return r.mode === 'Pohotovost' ? h * rate * W.standby : h * rate * (1 + W.prem) + (W.bonus[c] || 0) / W.fx;
+}
+const unplHours = u => netH(spanH(tmin(u.from), tmin(u.to)), true);
+const unplCost = u => { const W = MON().wk, c = u.cat || ''; return unplHours(u) * (W.rate[c] || 0) * (1 + W.prem) + (W.bonus[c] || 0) / W.fx; };
+const wkSats = () => Object.keys(STATE.wk).filter(s => wkRows(s).length || wkUnpl(s).length || live(STATE.wk[s].confirm).length).sort();
+function wkCutoff(sat){ const W = MON().wk, [h, m] = (W.cutTime || '12:00').split(':').map(Number), d = new Date(addDays(sat, -W.cutDays) + 'T00:00:00'); d.setHours(h || 0, m || 0); return d; }
+function wkStatus(sat, dept){
+  const rows = wkRows(sat).filter(r => r.dept === dept), cf = STATE.wk[sat]?.confirm?.[dept]?.state;
+  if (cf === 'Nikdo nepůjde') return rows.length ? ['Nikdo nepůjde – ale má řádky!', 'crit'] : ['Nikdo nepůjde', 'neutral'];
+  if (cf === 'Odesláno ke schválení') return rows.some(r => !r.appr || r.appr === 'Doplnit') ? ['Odesláno – ke schválení', 'warn'] : ['Schváleno', 'good'];
+  if (Date.now() > wkCutoff(sat).getTime()) return ['NEODESLÁNO – po termínu', 'crit'];
+  return rows.length ? ['Rozpracováno', 'warn'] : ['Čeká na rozpis', 'neutral'];
+}
+function wkSummary(sat){
+  const W = MON().wk, fri = addDays(sat, -1), sun = addDays(sat, 1);
+  const all = wkRows(sat).map(r => ({ r, cat: wkCat(r), hours: wkHours(r), cost: wkCost(r), live: r.appr !== 'Zamítnuto', site: r.mode === 'Na místě' }));
+  const plan = all.filter(x => x.live), site = plan.filter(x => x.site);
+  // stejný člověk víc směn na místě o jednom víkendu
+  const cnt = new Map(); site.forEach(x => cnt.set(nameKey(x.r.name), (cnt.get(nameKey(x.r.name)) || 0) + 1));
+  const unpl = wkUnpl(sat).map(u => ({ u, hours: unplHours(u), cost: unplCost(u) }));
+  const depts = [...new Set([...W.depts.map(d => d[0]), ...all.map(x => x.r.dept)])].map(d => {
+    const A = all.filter(x => x.r.dept === d), P = plan.filter(x => x.r.dept === d), S = site.filter(x => x.r.dept === d);
+    return { d, owner: W.depts.find(x => x[0] === d)?.[1] || '', status: wkStatus(sat, d),
+      fri: S.filter(x => x.r.date === fri).length, sat: S.filter(x => x.r.date === sat).length, sun: S.filter(x => x.r.date === sun).length,
+      shifts: S.length, dl: S.filter(x => x.cat === 'DL').length, ind: S.filter(x => x.cat !== 'DL').length, hours: S.reduce((s, x) => s + x.hours, 0), cost: P.reduce((s, x) => s + x.cost, 0),
+      pending: A.filter(x => !x.r.appr || x.r.appr === 'Doplnit').length, approved: A.filter(x => x.r.appr === 'Schváleno').length,
+      incomplete: A.filter(x => String(x.r.output || '').trim().length < 8 || !x.r.reason || !x.cat).length, sal: S.filter(x => x.cat === 'SAL').length,
+      multi: S.filter(x => cnt.get(nameKey(x.r.name)) > 1).length, unpl: unpl.filter(x => x.u.dept === d).length, noShow: A.filter(x => x.r.actual === 'Nepřišel').length };
+  });
+  const sum = k => depts.reduce((s, x) => s + x[k], 0);
+  const tot = { fri: sum('fri'), sat: sum('sat'), sun: sum('sun'), shifts: sum('shifts'), dl: sum('dl'), ind: sum('ind'), hours: sum('hours'), cost: sum('cost'), pending: sum('pending'), approved: sum('approved'), incomplete: sum('incomplete'), sal: sum('sal'), multi: sum('multi'), unpl: unpl.length, noShow: sum('noShow'),
+    costOk: plan.filter(x => x.r.appr === 'Schváleno').reduce((s, x) => s + x.cost, 0), unplCost: unpl.reduce((s, x) => s + x.cost, 0), unplHours: unpl.reduce((s, x) => s + x.hours, 0) };
+  tot.ratio = tot.dl ? tot.ind / tot.dl : null;
+  tot.noMode = all.filter(x => !x.r.mode).length;   // bez režimu: sešit je nepočítá mezi lidi na místě, náklad ano
+  tot.noRoster = depts.filter(x => /^(Čeká|NEODESLÁNO|Rozpracováno)/.test(x.status[0])).length;
+  tot.late = depts.filter(x => x.status[0].startsWith('NEODESLÁNO')).length;
+  const by = (key, list) => { const m = new Map((list || []).map(k => [k, { k, shifts: 0, hours: 0, cost: 0 }])); plan.forEach(x => { const k = key(x) || ''; const a = m.get(k) || { k, shifts: 0, hours: 0, cost: 0 }; if (x.site){ a.shifts++; a.hours += x.hours; } a.cost += x.cost; m.set(k, a); }); return [...m.values()]; };
+  return { sat, fri, sun, all, depts, tot, unpl, reasons: by(x => x.r.reason, W.reasons), lines: by(x => x.r.line).filter(x => x.cost || x.shifts).sort((a, b) => b.cost - a.cost) };
+}
+
+/* import sešitů: typ podle hlaviček listů, sloupce podle názvů */
+function monHead(rows, need){
+  for (let i = 0; i < Math.min(rows.length, 12); i++){
+    const c = rows[i].map(norm);
+    if (need.every(k => c.some(x => x.startsWith(k)))) return { i, col: k => c.findIndex(x => x.startsWith(k)) };
+  }
+  return null;
+}
+async function parseMonitor(file){
+  const XLSX = await getXLSX();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const S = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' });
+  const str = v => String(v ?? '').trim();
+  const sheets = wb.SheetNames.map(n => ({ n, rows: S(n) }));
+  const H12 = sheets.map(s => ({ ...s, h: monHead(s.rows, ['jmeno', 'pocet 12h']) })).filter(s => s.h);
+  const WK = sheets.map(s => ({ ...s, h: monHead(s.rows, ['datum smeny', 'jmeno']) })).filter(s => s.h);
+  const sheet = n => sheets.find(s => norm(s.n) === norm(n));
+  const kv = rows => { const m = {}; rows.forEach(r => { const k = norm(r[0]); if (k && r[1] !== '' && r[1] != null) m[k] = r[1]; }); return p => { const k = Object.keys(m).find(x => x.startsWith(p)); return k == null ? undefined : m[k]; }; };
+  const listAfter = (rows, test, col = 0) => { const i = rows.findIndex(test); if (i < 0) return []; const out = []; for (const r of rows.slice(i + 1)){ if (!str(r[col])) break; out.push(r); } return out; };
+  const setNum = (o, k, v, f = x => x) => { const n = num(v); if (n != null) o[k] = f(n); };
+  if (H12.length){
+    const set = {}, N = sheet('Nastavení');
+    if (N){
+      const g = kv(N.rows); set.rate = {}; setNum(set.rate, 'DL', g('sazba dl')); setNum(set.rate, 'IDL', g('sazba idl'));
+      setNum(set, 'extraH', g('placene hodiny navic')); setNum(set, 'prem', g('priplatek')); setNum(set, 'fx', g('kurz')); setNum(set, 'limWeek', g('upozornit: 12h')); setNum(set, 'limRun', g('upozornit: tydnu'));
+      const ar = listAfter(N.rows, r => norm(r[0]).startsWith('oblast (')).map(r => [str(r[0]), str(r[1])]); if (ar.length) set.areas = ar;
+    }
+    const L = sheet('Seznamy');
+    if (L){
+      const hi = L.rows.findIndex(r => r.some(c => norm(c).startsWith('pozice'))), hr = (L.rows[hi] || []).map(norm), body = L.rows.slice(hi + 1);
+      const col = j => body.map(r => str(r[j])).filter(Boolean);
+      set.pos = {}; hr.forEach((h, j) => { if (h.startsWith('pozice')) set.pos[str(L.rows[hi][j]).split(/[–-]/).pop().trim()] = body.filter(r => str(r[j])).map(r => [str(r[j]), str(r[j + 1])]); });
+      const jr = hr.findIndex(h => h.startsWith('duvod')), jt = hr.findIndex(h => h === 'typ'), jl = hr.findIndex(h => h.startsWith('linka'));
+      if (jr >= 0) set.reasons = col(jr); if (jt >= 0) set.types = col(jt); if (jl >= 0) set.lines = col(jl);
+    }
+    const weeks = {}; let n = 0;
+    H12.forEach(s => {
+      const c = s.h.col, ix = { d: c('tyden'), area: c('oblast'), name: c('jmeno'), pos: c('pozice'), cat: c('kat'), line: c('linka'), n: c('pocet 12h'), type: c('typ'), reason: c('duvod'), detail: c('detail'), measure: c('opatreni'), until: c('do kdy'), appr: c('schvaleni'), pm: c('poznamka pm') };
+      s.rows.slice(s.h.i + 1).forEach(r => {
+        const name = str(r[ix.name]), d = cellDate(r[ix.d]); if (!name || !d) return;
+        const w = weekOfDate(d), v = k => ix[k] >= 0 ? str(r[ix[k]]) : '', cat = v('cat');
+        (weeks[w] ||= []).push({ area: v('area') || s.n, name, pos: v('pos'), cat: cat === '?' ? '' : cat, line: v('line'), n: num(r[ix.n]), type: v('type'), reason: v('reason'), detail: v('detail'), measure: v('measure'), until: ix.until >= 0 ? cellDate(r[ix.until]) || '' : '', appr: v('appr'), pmNote: v('pm'), src: 'xlsx' });
+        n++;
+      });
+    });
+    return { kind: 'h12', file: file.name, set, weeks, n };
+  }
+  if (WK.length){
+    const set = {}, N = sheet('Nastavení');
+    if (N){
+      const g = kv(N.rows); set.rate = {}; set.bonus = {};
+      ['DL', 'IDL', 'SAL'].forEach(k => { setNum(set.rate, k, g('sazba ' + k.toLowerCase())); setNum(set.bonus, k, g('odmena za smenu ' + k.toLowerCase())); });
+      setNum(set, 'prem', g('priplatek')); setNum(set, 'standby', g('pohotovost')); setNum(set, 'fx', g('kurz')); setNum(set, 'brk', g('prestavka')); setNum(set, 'cutDays', g('uzaverka: dni')); setNum(set, 'limInd', g('limit neprimych'));
+      const ct = g('uzaverka: cas'); if (ct != null) set.cutTime = hhmm(ct);
+      const dp = listAfter(N.rows, r => norm(r[0]).startsWith('oddeleni (')).filter(r => str(r[1])).map(r => [str(r[0]), str(r[1])]); if (dp.length) set.depts = dp;
+      const rs = listAfter(N.rows, r => norm(r[0]).startsWith('duvody vikendove')).map(r => str(r[0])); if (rs.length) set.reasons = rs;
+      const sh = listAfter(N.rows, r => norm(r[0]) === 'smena' && norm(r[1]) === 'od').filter(r => typeof r[1] === 'number' || /^\d{1,2}:\d{2}$/.test(str(r[1]))).map(r => [str(r[0]), hhmm(r[1]), hhmm(r[2])]); if (sh.length) set.shifts = sh;
+    }
+    const P = sheet('Pozice');
+    if (P){
+      const hi = P.rows.findIndex((r, i) => P.rows[i + 1] && norm(P.rows[i + 1][0]) === 'pozice' && str(r[0]));
+      if (hi >= 0){ set.pos = {}; P.rows[hi].forEach((h, j) => { if (str(h) && norm(P.rows[hi + 1][j]) === 'pozice') set.pos[str(h)] = P.rows.slice(hi + 2).filter(r => str(r[j])).map(r => [str(r[j]), str(r[j + 1])]); }); }
+    }
+    const Lk = sheet('Linky'); if (Lk){ const h = monHead(Lk.rows, ['linka']); if (h) set.lines = Lk.rows.slice(h.i + 1).map(r => str(r[h.col('linka')])).filter(Boolean); }
+    const sats = {}, depts = (set.depts || MON().wk.depts).map(d => d[0]); let n = 0;
+    WK.forEach(s => {
+      const c = s.h.col, arch = c('archivovano') >= 0, sheetDept = depts.find(d => norm(d) === norm(s.n));   // list oddělení = oddělení (sloupec bývá přepsaný, např. „Support Q“)
+      const ix = { d: c('datum smeny'), dept: c('oddeleni'), name: c('jmeno'), cat: c('kat'), pos: c('pozice'), shift: c('smena'), other: c('jiny cas'), mode: c('rezim'), reason: c('duvod'), line: c('linka'), output: c('konkretni'), hours: c('hodiny'), cost: c('naklad'), appr: c('schvaleni'), pm: c('poznamka pm'), actual: c('skutecnost') };
+      s.rows.slice(s.h.i + 1).forEach(r => {
+        const name = str(r[ix.name]), d = cellDate(r[ix.d]); if (!name || !d) return;
+        const v = k => ix[k] >= 0 ? str(r[ix[k]]) : '', row = { date: d, dept: sheetDept || v('dept') || s.n, name, cat: v('cat'), pos: v('pos'), shift: v('shift'), other: v('other'), mode: v('mode'), reason: v('reason'), line: v('line'), output: v('output'), appr: v('appr'), pmNote: v('pm'), actual: v('actual'), src: 'xlsx' };
+        if (arch && num(r[ix.hours]) != null) row.fix = { h: num(r[ix.hours]), c: num(r[ix.cost]) || 0 };   // archiv: hodnoty zmrazené sazbami v době archivace
+        (sats[satOf(d)] ||= { rows: [], confirm: {}, unpl: [] }).rows.push(row); n++;
+      });
+    });
+    const Cf = sheet('Potvrzení'), ch = Cf && monHead(Cf.rows, ['vikend', 'oddeleni', 'stav']);
+    if (ch) Cf.rows.slice(ch.i + 1).forEach(r => { const d = cellDate(r[ch.col('vikend')]), dept = str(r[ch.col('oddeleni')]), st = str(r[ch.col('stav')]); if (!d || !dept || !st) return;
+      (sats[satOf(d)] ||= { rows: [], confirm: {}, unpl: [] }).confirm[dept] = { state: st, who: str(r[ch.col('kdo')]), when: str(r[ch.col('kdy')]), note: str(r[ch.col('poznamka')]) }; });
+    const U = sheet('Neplánovaní'), uh = U && monHead(U.rows, ['datum', 'jmeno', 'prichod']);
+    if (uh) U.rows.slice(uh.i + 1).forEach(r => { const d = cellDate(r[uh.col('datum')]), name = str(r[uh.col('jmeno')]); if (!d || !name) return;
+      (sats[satOf(d)] ||= { rows: [], confirm: {}, unpl: [] }).unpl.push({ date: d, name, dept: str(r[uh.col('oddeleni')]), cat: str(r[uh.col('kat')]), from: hhmm(r[uh.col('prichod')]), to: hhmm(r[uh.col('odchod')]), source: str(r[uh.col('zjisteno')]), note: str(r[uh.col('vyjadreni')]), src: 'xlsx' }); n++; });
+    return { kind: 'wk', file: file.name, set, sats, n };
+  }
+  throw new Error(`Soubor nevypadá jako sešit 12h směn ani víkendový rozpis – chybí list s hlavičkou „Jméno a příjmení“ + „Počet 12h směn“ nebo „Datum směny“. Listy: ${wb.SheetNames.join(', ')}`);
+}
+// uložení importu: řádky ze sešitu v dotčených týdnech se nahradí, řádky zadané v aplikaci zůstanou
+async function commitMonitor(P){
+  const mon = STATE.mon = clone(STATE.mon || MON_DEFAULT()), part = mon[P.kind];
+  Object.entries(P.set).forEach(([k, v]) => { part[k] = v && typeof v === 'object' && !Array.isArray(v) && k !== 'pos' ? { ...part[k], ...v } : v; });
+  let ok = await saveMon();
+  const keep = o => Object.fromEntries(Object.entries(o || {}).filter(([, r]) => r && r.src !== 'xlsx'));
+  if (P.kind === 'h12'){
+    for (const [w, rows] of Object.entries(P.weeks)){
+      const b = monBox('h12', w); b.rows = keep(b.rows);
+      rows.forEach((r, i) => b.rows[`x${i}-${slug(r.area).slice(0, 12)}`] = r);
+      ok = (await saveMonDoc('h12', w)) && ok;
+    }
+  } else {
+    for (const [s, x] of Object.entries(P.sats)){
+      const b = monBox('weekend', s); b.rows = keep(b.rows); b.unpl = keep(b.unpl); b.confirm = { ...(b.confirm || {}), ...x.confirm };
+      x.rows.forEach((r, i) => b.rows[`x${i}-${slug(r.dept).slice(0, 12)}`] = r);
+      x.unpl.forEach((u, i) => b.unpl[`x${i}`] = u);
+      ok = (await saveMonDoc('weekend', s)) && ok;
+    }
+  }
+  return ok;
+}
+
 /* ===== 7. Render ===== */
 function weekChips(){
   const ex = STATE.exports[latestKey()];
@@ -1681,14 +1974,14 @@ function renderHistory(){
 
 function renderAll(){
   volCache.clear();
-  weekChips(); renderPlan(); renderReco(); renderOutlook(); renderMaster(); renderSkills(); renderRoster(); renderParams(); renderHistory();
+  weekChips(); renderPlan(); renderReco(); renderOutlook(); renderMaster(); renderSkills(); renderRoster(); renderParams(); renderHistory(); renderH12(); renderWk(); renderMonInfo();
   $('rosterWeeks').innerHTML = $('weekChips').innerHTML;
   const lk = latestKey();
   $('hdrExport').textContent = lk ? `Export ${wkLabel(lk)}` : 'bez dat';
   $('hdrPlan').hidden = !lk; $('hdrPlan').textContent = lk ? `Plán ${wkLabel(STATE.planWeek)}` : '';
   renderHome();
 }
-const renderCalc = () => { volCache.clear(); renderPlan(); renderReco(); renderOutlook(); renderRoster(); renderHome(); };
+const renderCalc = () => { volCache.clear(); renderPlan(); renderReco(); renderOutlook(); renderRoster(); renderH12(); renderHome(); };
 
 /* ----- Dlaždice (úvodní přehled ve stylu MEC Analyzer) ----- */
 function tile(o){
@@ -1786,6 +2079,20 @@ function renderHome(){
       desc: `${pl0 ? `<b>${mv}</b> ${pl(mv, 'přesun', 'přesuny', 'přesunů')}` : 'Zatím stálé obsazení – sestav rozpis'} · nepřítomní <b>${abs}</b> · na 12 h <b>${P.filter(p => !isAbsent(p, w) && h12Of(p, w)).length}</b> z ${present}. Úpravy, dovolené a noví lidé se zadávají tady.` });
   } else h += tile({ title: 'Rozpis týdne', value: '–', label: 'kdo je na které lince a směně', go: 'import', tone: 'amber', desc: 'Naimportuj jednou rozpisy směn – pak se rozpis sestavuje v aplikaci.', cta: 'Nahrát rozpisy →' });
 
+  // 12h směny a víkendy
+  { const hw = h12Week(), S = h12Summary(hw), T = S.tot, RR = h12FromRoster(hw), H = MON().h12, miss = RR?.missing.length || 0;
+    h += tile({ title: '12h směny', value: S.rows.length ? fmt(T.people) : (RR?.on.length ? fmt(RR.on.length) : '–'), unit: 'lidí', label: S.rows.length ? `na 12h směně v ${wkLabel(hw)} · ${fmt(T.n)} směn` : `na 12 h v Rozpisu týdne ${wkLabel(hw)}`, go: 'h12', tone: 'orange',
+      badge: T.overN + T.overRun ? `${T.overN + T.overRun} nad limitem` : miss ? `${miss} chybí v monitoringu` : null, badgeTone: T.overN + T.overRun ? 'r' : 'a',
+      viz: S.rows.length ? miniBars(S.areas.filter(a => a.n).map(a => ({ n: a.k, v: a.n, c: 'var(--h12)' })), ' sm.') : '',
+      desc: S.rows.length ? `Náklad navíc <b>${eur(T.cost)}</b> za týden (ročně ≈ <b>${fmt(T.cost * 52 / 1000)} tis. €</b>) · bez opatření <b${T.noMeasure ? ' class="down"' : ''}>${T.noMeasure}</b> · čeká na PM <b>${T.pending}</b>${miss ? ` · z rozpisu chybí <b class="down">${miss}</b>` : ''}`
+        : 'Nahraj sešit Kontrola 12h směn, nebo převezmi lidi na 12 h z Rozpisu týdne.' });
+    const sat = wkSat(), W = wkSummary(sat), WT = W.tot, lim = MON().wk.limInd, bad = WT.late || WT.ratio > lim;
+    h += tile({ title: 'Víkendy', value: W.all.length ? fmt(WT.cost + WT.unplCost) : '–', unit: '€', label: `odhad nákladu Pá ${dmy(W.fri)} – Ne ${dmy(W.sun)}`, go: 'wkend', tone: !W.all.length ? 'navy' : bad ? 'red' : WT.pending ? 'amber' : 'green',
+      badge: WT.late ? `${WT.late} odd. po termínu` : WT.noRoster ? `${WT.noRoster} odd. bez rozpisu` : W.all.length ? 'rozpisy odeslané' : null, badgeTone: WT.late ? 'r' : WT.noRoster ? 'a' : 'g',
+      viz: W.all.length ? miniBars([{ n: 'pátek', v: WT.fri, c: 'var(--navy-2)' }, { n: 'sobota', v: WT.sat, c: 'var(--navy-2)' }, { n: 'neděle', v: WT.sun, c: 'var(--navy-2)' }], ' lidí') : '',
+      desc: W.all.length ? `Schváleno <b>${eur(WT.costOk)}</b> · nepřímí na 1 DL <b${WT.ratio > lim ? ' class="down"' : ''}>${WT.ratio == null ? '–' : fmt(WT.ratio, 2)}</b> (cíl ${fmt(lim, 2)}) · čeká na schválení <b>${WT.pending}</b>${WT.unpl ? ` · neplánovaní <b class="down">${WT.unpl}</b>` : ''}`
+        : 'Na tento víkend zatím nikdo není v rozpisu. Rozpis zadávají manažeři oddělení do uzávěrky.' }); }
+
   // 7 – skill matrix
   if (D.people.length){
     const lv = D.people.flatMap(x => Object.values(x.cells).filter(c => c.src === 'rozpis').map(c => c.lvl));
@@ -1815,6 +2122,243 @@ function renderHome(){
   el.innerHTML = h;
 }
 
+/* ----- 12h směny a víkendy: obrazovky ----- */
+const eur = v => fmt(v) + ' €';
+const opts = (list, sel, empty = '–') => `<option value="">${empty}</option>` + [...new Set([...list, ...(sel && !list.includes(sel) ? [sel] : [])])].map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('');
+const dlist = (id, list) => `<datalist id="${id}">${[...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'cs')).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+const kpi = (lbl, val, sub, cls = '') => `<div class="card kpi ${cls}"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub || ''}</div></div>`;
+const chipRow = (list, cur, attr, label) => list.map(k => `<button class="chip ${k === cur ? 'active' : ''}" ${attr}="${esc(k)}">${label(k)}</button>`).join('');
+const shareBar = (v, tot) => `<span class="p12"><i style="width:${tot ? Math.min(100, v / tot * 100) : 0}%"></i></span>`;
+VIEW.h12a = ''; VIEW.h12x = false; VIEW.wkd = '';
+
+function h12Week(){
+  const ws = h12Weeks();
+  if (VIEW.h12w) return VIEW.h12w;
+  const pw = STATE.planWeek, cur = weekOfDate(todayIso());
+  return [pw, cur].find(w => w && ws.includes(w)) || ws.filter(w => w <= cur).at(-1) || ws[0] || pw || cur;
+}
+function wkSat(){
+  if (VIEW.wks) return VIEW.wks;
+  const ss = wkSats(), next = satOf(todayIso());
+  return ss.includes(next) ? next : ss.filter(s => s <= next).at(-1) || next;
+}
+
+function renderH12(){
+  const el = $('h12Body'), w = h12Week(), H = MON().h12, ws = [...new Set([...h12Weeks(), w, STATE.planWeek].filter(Boolean))].sort().slice(-10);
+  $('h12Weeks').innerHTML = chipRow(ws, w, 'data-h12w', wkLabel);
+  const S = h12Summary(w), T = S.tot, R = h12FromRoster(w);
+  let h = '';
+  if (R?.missing.length) h += `<div class="warnbox"><b>Rozpis týdne ${wkLabel(w)}:</b> na 12 h je ${R.on.length} ${pl(R.on.length, 'člověk', 'lidé', 'lidí')}, z toho <b>${R.missing.length}</b> v monitoringu chybí (${R.missing.slice(0, 6).map(p => esc(p.name)).join(', ')}${R.missing.length > 6 ? '…' : ''}).
+    <div class="btns" style="margin-top:6px"><button class="btn small" id="h12Take">Převzít z rozpisu (${R.missing.length})</button></div><div class="note">Převezme jméno, linku, pozici a kategorii (TL = IDL, ostatní DL). Počet směn, důvod a opatření doplní vlastník oblasti.</div></div>`;
+  else if (R?.on.length) h += `<div class="infobox">Všech ${R.on.length} lidí na 12 h z Rozpisu týdne ${wkLabel(w)} je v monitoringu.</div>`;
+  if (!S.rows.length){ el.innerHTML = h + emptyMon('12h směny', `V ${wkLabel(w)} zatím nikdo není. Nahraj sešit <b>Kontrola_12h_smen</b> v Importu, převezmi lidi z Rozpisu týdne, nebo přidej řádek.`); return; }
+  const noN = S.rows.filter(x => x.noShifts).length;
+  h += `<div class="grid-kpi">
+    ${kpi('Lidé na 12h', fmt(T.people), `${wkLabel(w)} · ${S.areas.filter(a => a.people).map(a => `${esc(a.k)} ${a.people}`).join(' · ')}`, 'k12')}
+    ${kpi('12h směn', fmt(T.n), `DL ${fmt(T.nDL)} · IDL ${fmt(T.nIDL)}${noN ? ` · <b>${noN}</b> bez počtu směn` : ''}`, 'k12')}
+    ${kpi('Hodiny navíc', fmt(T.hours), `${fmt(H.extraH)} h za každou 12h směnu`)}
+    ${kpi('Náklad navíc', eur(T.cost), `≈ ${fmt(T.cost * H.fx / 1000)} tis. Kč · ročně ×52 ≈ ${fmt(T.cost * 52 / 1000)} tis. €`)}
+    ${kpi('Nad limitem', fmt(T.overN + T.overRun), `≥ ${H.limWeek} směn/týden: ${T.overN} · ≥ ${H.limRun} týdny po sobě: ${T.overRun}`, T.overN + T.overRun ? 'alert' : 'ok')}
+    ${kpi('Bez opatření', fmt(T.noMeasure), 'chybí, co 12h ukončí (mimo jednorázové)', T.noMeasure ? 'alert' : 'ok')}
+    ${kpi('Čeká na PM', fmt(T.pending), `schválení prázdné nebo „Doplnit“ · trvalý model ${T.perm}`, T.pending ? '' : 'ok')}
+  </div>`;
+  const row = (a, first) => `<td>${first}</td><td class="num">${fmt(a.people)}</td><td class="num"><b>${fmt(a.n)}</b></td><td class="num">${fmt(a.nDL)}</td><td class="num">${fmt(a.nIDL)}</td><td class="num">${fmt(a.hours)}</td><td class="num">${fmt(a.cost)}</td><td class="num">${fmt(a.perm)}</td><td class="num ${a.noMeasure ? 'neg' : ''}">${fmt(a.noMeasure)}</td><td class="num ${a.overN ? 'neg' : ''}">${fmt(a.overN)}</td><td class="num ${a.overRun ? 'neg' : ''}">${fmt(a.overRun)}</td><td class="num">${fmt(a.pending)}</td>`;
+  h += `<h2>Oblasti</h2><div class="tbl-wrap"><table><thead><tr><th>Oblast</th><th class="num">Lidé</th><th class="num">Směn</th><th class="num">DL</th><th class="num">IDL</th><th class="num">Hodiny navíc</th><th class="num">Náklad €</th><th class="num">Trvalý model</th><th class="num">Bez opatření</th><th class="num">≥ ${H.limWeek} směn</th><th class="num">≥ ${H.limRun} týdny</th><th class="num">Čeká na PM</th></tr></thead><tbody>
+    ${S.areas.map(a => `<tr>${row(a, `<b>${esc(a.k)}</b> <span class="muted">${esc(H.areas.find(x => x[0] === a.k)?.[1] || '')}</span>`)}</tr>`).join('')}
+    <tr class="tot">${row(T, '<b>Celkem</b>')}</tr></tbody></table></div>`;
+  h += `<div class="mgrid"><div><h2>Proč 12 h</h2><div class="tbl-wrap"><table><thead><tr><th>Důvod</th><th class="num">Lidé</th><th class="num">Směn</th><th class="num">Náklad €</th><th>Podíl</th></tr></thead><tbody>
+    ${S.reasons.map(a => `<tr><td>${a.k ? esc(a.k) : '<span class="tag warn">bez důvodu</span>'}</td><td class="num">${a.people}</td><td class="num">${fmt(a.n)}</td><td class="num">${fmt(a.cost)}</td><td>${shareBar(a.cost, T.cost)}<span class="p12v">${fmt(T.cost ? a.cost / T.cost * 100 : 0)} %</span></td></tr>`).join('')}</tbody></table></div></div>
+    <div><h2>Kde – linka / stroj</h2><div class="tbl-wrap"><table><thead><tr><th>Linka / stroj</th><th class="num">Lidé</th><th class="num">Směn</th><th class="num">Náklad €</th><th>Podíl směn</th></tr></thead><tbody>
+    ${S.lines.slice(0, 15).map(a => `<tr><td>${a.k ? esc(a.k) : '<span class="muted">bez linky</span>'}</td><td class="num">${a.people}</td><td class="num">${fmt(a.n)}</td><td class="num">${fmt(a.cost)}</td><td>${shareBar(a.n, T.n)}</td></tr>`).join('')}</tbody></table></div>${S.lines.length > 15 ? `<p class="note">+ ${S.lines.length - 15} dalších</p>` : ''}</div></div>`;
+  // řádky
+  const areas = [...new Set(S.rows.map(x => x.r.area))];
+  const list = S.rows.filter(x => (!VIEW.h12a || x.r.area === VIEW.h12a) && (!VIEW.h12x || x.overN || x.overRun || x.noMeasure || x.pending || x.noShifts || !x.r.reason))
+    .sort((a, b) => a.r.area.localeCompare(b.r.area, 'cs') || (b.overN + b.overRun) - (a.overN + a.overRun) || a.r.name.localeCompare(b.r.name, 'cs'));
+  h += `<h2>Lidé na 12h směně – ${wkLabel(w)}</h2>
+    <div class="chips sk-filter"><button class="chip ${!VIEW.h12a ? 'active' : ''}" data-h12a="">Vše (${S.rows.length})</button>${areas.map(a => `<button class="chip ${VIEW.h12a === a ? 'active' : ''}" data-h12a="${esc(a)}">${esc(a)} (${S.rows.filter(x => x.r.area === a).length})</button>`).join('')}
+    <label class="note"><input type="checkbox" id="h12x" ${VIEW.h12x ? 'checked' : ''}> jen k řešení</label></div>
+    <div class="tbl-wrap mtbl"><table><thead><tr><th>Jméno</th><th>Oblast</th><th>Pozice</th><th>Kat.</th><th>Linka / stroj</th><th class="num">Směn</th><th class="num">Týdnů po sobě</th><th>Typ</th><th>Důvod</th><th>Opatření – co 12h ukončí</th><th>Do kdy</th><th class="num">Náklad €</th><th>Schválení PM</th><th></th></tr></thead><tbody>
+    ${list.map(x => { const r = x.r; return `<tr>
+      <td><b>${esc(r.name)}</b>${r.src === 'rozpis' ? ' <span class="tag neutral" title="převzato z Rozpisu týdne">rozpis</span>' : ''}</td><td>${esc(r.area)}</td><td>${esc(r.pos)}</td><td>${esc(x.cat) || '<span class="tag warn">?</span>'}</td><td>${esc(r.line)}</td>
+      <td class="num ${x.overN ? 'neg' : ''}">${x.noShifts ? '<span class="tag warn">doplnit</span>' : fmt(r.n)}</td><td class="num ${x.overRun ? 'neg' : ''}">${x.run}</td>
+      <td>${esc(r.type)}</td><td class="wrap">${r.reason ? esc(r.reason) : '<span class="tag warn">chybí</span>'}${r.detail ? `<div class="note">${esc(r.detail)}</div>` : ''}</td>
+      <td class="wrap">${x.noMeasure ? '<span class="tag crit">chybí</span> ' : ''}${esc(r.measure)}</td><td>${r.until ? dmy(r.until) + r.until.slice(0, 4) : ''}</td><td class="num">${fmt(x.cost)}</td>
+      <td><select class="cell sel-appr ${r.appr === 'Schváleno' ? 'ok' : r.appr === 'Zamítnuto' ? 'no' : ''}" data-h12appr="${esc(rid(w, r))}">${opts(APPR, r.appr, 'čeká')}</select></td>
+      <td><button class="btn secondary small" data-h12edit="${esc(rid(w, r))}">Upravit</button></td></tr>`; }).join('') || '<tr><td colspan="14" class="muted">Nic k řešení.</td></tr>'}
+    </tbody></table></div>`;
+  // trend
+  const tw = h12Weeks().slice(-12);
+  if (tw.length > 1){
+    const TS = tw.map(x => ({ w: x, t: h12Summary(x).tot })), mx = Math.max(...TS.map(x => x.t.cost));
+    h += `<h2>Trend</h2><div class="tbl-wrap"><table><thead><tr><th>Týden</th><th class="num">Lidé</th><th class="num">Směn</th><th class="num">Hodiny navíc</th><th class="num">Náklad €</th><th></th></tr></thead><tbody>
+      ${TS.map(x => `<tr ${x.w === w ? 'class="cur"' : ''}><td>${wkLabel(x.w)}</td><td class="num">${fmt(x.t.people)}</td><td class="num">${fmt(x.t.n)}</td><td class="num">${fmt(x.t.hours)}</td><td class="num">${fmt(x.t.cost)}</td><td style="width:40%">${shareBar(x.t.cost, mx).replace('p12"', 'p12 wide"')}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  el.innerHTML = h;
+}
+const rid = (key, r) => Object.entries((STATE.h12[key] || STATE.wk[key])?.rows || {}).find(([, v]) => v === r)?.[0] || '';
+const emptyMon = (t, msg) => `<div class="empty"><div class="big">📋</div>${msg}<br><br><button class="btn" data-go-imp="1">Otevřít import</button></div>`;
+
+function renderWk(){
+  const el = $('wkBody'), sat = wkSat(), W = MON().wk, ss = [...new Set([...wkSats(), sat, satOf(todayIso())])].sort().slice(-8);
+  $('wkSats').innerHTML = chipRow(ss, sat, 'data-wks', s => `${wkShort(weekOfDate(s))} · ${dmy(addDays(s, -1))}–${dmy(addDays(s, 1))}`);
+  const S = wkSummary(sat), T = S.tot, cut = wkCutoff(sat);
+  let h = `<p class="note">Víkend <b>${wkLabel(weekOfDate(sat))}</b>: Pá ${dmy(S.fri)} – Ne ${dmy(S.sun)} · uzávěrka rozpisu ${DAY_TXT[cut.getDay()]} ${cut.getDate()}. ${cut.getMonth() + 1}. ${W.cutTime} · plán bez zamítnutých řádků</p>`;
+  if (T.noMode) h += `<div class="warnbox"><b>${T.noMode}</b> ${pl(T.noMode, 'řádek nemá', 'řádky nemají', 'řádků nemá')} vyplněný Režim (Na místě / Pohotovost). Do lidí a směn na místě se nepočítají (stejně jako v sešitu), náklad ano.
+    <div class="btns" style="margin-top:6px"><button class="btn small" id="wkFixMode">Nastavit „Na místě“ u ${T.noMode} ${pl(T.noMode, 'řádku', 'řádků', 'řádků')}</button></div></div>`;
+  h += `<div class="grid-kpi">
+    ${kpi('Lidé Pá / So / Ne', `${T.fri} / ${T.sat} / ${T.sun}`, `${T.shifts} směn na místě · ${fmt(T.hours)} h`)}
+    ${kpi('Odhad nákladu', eur(T.cost + T.unplCost), `schváleno ${eur(T.costOk)} · ≈ ${fmt((T.cost + T.unplCost) * W.fx / 1000)} tis. Kč`)}
+    ${kpi('Nepřímé na 1 DL směnu', T.ratio == null ? (T.ind ? 'jen nepřímí' : '–') : fmt(T.ratio, 2), `cíl ≤ ${fmt(W.limInd, 2)} · DL ${T.dl} · nepřímí ${T.ind}`, T.ratio > W.limInd || (T.ratio == null && T.ind) ? 'alert' : T.ratio != null ? 'ok' : '')}
+    ${kpi('Oddělení bez rozpisu', T.noRoster, T.late ? `${T.late} po termínu` : 'všechna odeslala nebo nikdo nejde', T.late ? 'alert' : T.noRoster ? '' : 'ok')}
+    ${kpi('Čeká na schválení', T.pending, `schváleno ${T.approved} řádků`, T.pending ? '' : 'ok')}
+    ${kpi('Neplánovaní', T.unpl, T.unpl ? `${fmt(T.unplHours)} h · ${eur(T.unplCost)}` : 'v závodě a ne v rozpisu', T.unpl ? 'alert' : 'ok')}
+  </div>`;
+  const cfBtns = d => { const c = STATE.wk[sat]?.confirm?.[d]; return `<div class="cfb">${c ? `<span class="note" title="${esc([c.who, c.when && new Date(c.when).toString() !== 'Invalid Date' ? new Date(c.when).toLocaleString('cs-CZ') : c.when, c.note].filter(Boolean).join(' · '))}">${esc(c.state)}</span><button class="btn secondary small" data-cf="${esc(d)}" data-st="">Zrušit</button>`
+    : `<button class="btn small" data-cf="${esc(d)}" data-st="Odesláno ke schválení">Odeslat ke schválení</button><button class="btn secondary small" data-cf="${esc(d)}" data-st="Nikdo nepůjde">Nikdo nepůjde</button>`}</div>`; };
+  const n0 = (v, bad) => `<td class="num ${v && bad ? 'neg' : ''}">${v ? fmt(v) : '<span class="muted">0</span>'}</td>`;
+  h += `<h2>Oddělení</h2><div class="tbl-wrap"><table><thead><tr><th>Oddělení</th><th>Stav rozpisu</th><th class="num">Pá</th><th class="num">So</th><th class="num">Ne</th><th class="num">Směny na místě</th><th class="num">DL</th><th class="num">Nepřímí</th><th class="num">Hodiny</th><th class="num">Náklad €</th><th class="num">Čeká</th><th class="num">Schváleno</th><th class="num">Neúplné</th><th class="num">THP na místě</th><th class="num">Víc směn / os.</th><th class="num">Neplán.</th><th class="num">Nepřišli</th><th>Potvrzení manažera</th></tr></thead><tbody>
+    ${S.depts.map(d => `<tr><td><b>${esc(d.d)}</b><div class="note">${esc(d.owner)}</div></td><td><span class="tag ${d.status[1]}">${esc(d.status[0])}</span></td>${n0(d.fri)}${n0(d.sat)}${n0(d.sun)}${n0(d.shifts)}${n0(d.dl)}${n0(d.ind)}${n0(d.hours)}<td class="num">${fmt(d.cost)}</td>${n0(d.pending)}${n0(d.approved)}${n0(d.incomplete, 1)}${n0(d.sal, 1)}${n0(d.multi, 1)}${n0(d.unpl, 1)}${n0(d.noShow, 1)}<td>${cfBtns(d.d)}</td></tr>`).join('')}
+    <tr class="tot"><td><b>Celkem závod</b></td><td></td>${['fri', 'sat', 'sun', 'shifts', 'dl', 'ind', 'hours'].map(k => n0(T[k])).join('')}<td class="num"><b>${fmt(T.cost)}</b></td>${n0(T.pending)}${n0(T.approved)}${n0(T.incomplete, 1)}${n0(T.sal, 1)}${n0(T.multi, 1)}${n0(T.unpl, 1)}${n0(T.noShow, 1)}<td></td></tr></tbody></table></div>`;
+  const pts = [['Oddělení bez rozpisu po termínu', T.late, '0', T.late > 0], ['Neúplné řádky (chybí výstup, důvod nebo kategorie)', T.incomplete, '0', T.incomplete > 0], ['Řádky čekající na schválení', T.pending, '0 v pátek 12:00', T.pending > 0 && Date.now() > new Date(S.fri + 'T12:00:00').getTime()],
+    ['Řádky lidí s víc směnami o víkendu', T.multi, 'jen výjimečně', T.multi > 0], ['THP (SAL) na místě – nestačí pohotovost?', T.sal, 'jen plánované práce', false], ['Nepřímé směny na 1 DL směnu', T.ratio == null ? '–' : fmt(T.ratio, 2), fmt(W.limInd, 2), T.ratio > W.limInd],
+    ['Neplánovaně přítomní (po kontrole)', T.unpl, '0', T.unpl > 0], ['Schválení, kteří nepřišli', T.noShow, '0', T.noShow > 0]];
+  h += `<div class="mgrid"><div><h2>Proč se jde do práce</h2><div class="tbl-wrap"><table><thead><tr><th>Důvod</th><th class="num">Směny</th><th class="num">Hodiny</th><th class="num">Náklad €</th><th>Podíl</th></tr></thead><tbody>
+    ${[...S.reasons.filter(a => a.k), ...S.reasons.filter(a => !a.k)].map(a => `<tr><td>${a.k ? esc(a.k) : '<span class="tag warn">bez důvodu</span>'}</td><td class="num">${fmt(a.shifts)}</td><td class="num">${fmt(a.hours, 1)}</td><td class="num">${fmt(a.cost)}</td><td>${shareBar(a.cost, T.cost)}<span class="p12v">${fmt(T.cost ? a.cost / T.cost * 100 : 0)} %</span></td></tr>`).join('')}</tbody></table></div></div>
+    <div><h2>Kontrolní body PM</h2><div class="tbl-wrap"><table><thead><tr><th>Kontrola</th><th class="num">Hodnota</th><th>Cíl</th></tr></thead><tbody>
+    ${pts.map(p => `<tr><td class="wrap">${p[0]}</td><td class="num ${p[3] ? 'neg' : ''}">${typeof p[1] === 'number' ? fmt(p[1]) : p[1]}</td><td class="muted">${p[2]}</td></tr>`).join('')}</tbody></table></div></div></div>`;
+  if (S.lines.length) h += `<h2>Kde se pracuje – linka / stroj</h2><div class="tbl-wrap"><table><thead><tr><th>Linka / stroj</th><th class="num">Směny</th><th class="num">Náklad €</th><th>Podíl nákladu</th></tr></thead><tbody>
+    ${S.lines.map(a => `<tr><td>${a.k ? esc(a.k) : '<span class="muted">bez linky</span>'}</td><td class="num">${fmt(a.shifts)}</td><td class="num">${fmt(a.cost)}</td><td>${shareBar(a.cost, T.cost)}<span class="p12v">${fmt(T.cost ? a.cost / T.cost * 100 : 0)} %</span></td></tr>`).join('')}</tbody></table></div>`;
+  // řádky rozpisu
+  const ds = [...new Set(S.all.map(x => x.r.dept))], list = S.all.filter(x => !VIEW.wkd || x.r.dept === VIEW.wkd).sort((a, b) => a.r.dept.localeCompare(b.r.dept, 'cs') || a.r.date.localeCompare(b.r.date) || a.r.name.localeCompare(b.r.name, 'cs'));
+  h += `<h2>Rozpis víkendu</h2><div class="chips sk-filter"><button class="chip ${!VIEW.wkd ? 'active' : ''}" data-wkd="">Vše (${S.all.length})</button>${ds.map(d => `<button class="chip ${VIEW.wkd === d ? 'active' : ''}" data-wkd="${esc(d)}">${esc(d)} (${S.all.filter(x => x.r.dept === d).length})</button>`).join('')}</div>
+    ${S.all.length ? `<div class="tbl-wrap mtbl"><table><thead><tr><th>Den</th><th>Jméno</th><th>Oddělení</th><th>Kat.</th><th>Pozice</th><th>Směna</th><th>Režim</th><th>Důvod</th><th>Linka / stroj</th><th>Konkrétní výstup</th><th class="num">Hodiny</th><th class="num">Náklad €</th><th>Schválení PM</th><th>Skutečnost</th><th></th></tr></thead><tbody>
+    ${list.map(x => { const r = x.r, id = rid(sat, r); return `<tr class="${r.appr === 'Zamítnuto' ? 'rej' : ''}">
+      <td>${dayOf(r.date)} ${dmy(r.date)}</td><td><b>${esc(r.name)}</b></td><td>${esc(r.dept)}</td><td>${esc(x.cat) || '<span class="tag warn">?</span>'}</td><td>${esc(r.pos)}</td><td>${esc(r.shift)}${r.other ? ` <span class="muted">${esc(r.other)}</span>` : ''}</td>
+      <td>${r.mode ? esc(r.mode) : '<span class="tag warn">chybí</span>'}</td><td>${r.reason ? esc(r.reason) : '<span class="tag warn">chybí</span>'}</td><td>${esc(r.line)}</td><td class="wrap">${String(r.output || '').trim().length < 8 ? '<span class="tag warn">doplnit</span> ' : ''}${esc(r.output)}</td>
+      <td class="num">${fmt(x.hours, 1)}</td><td class="num">${fmt(x.cost)}</td>
+      <td><select class="cell sel-appr ${r.appr === 'Schváleno' ? 'ok' : r.appr === 'Zamítnuto' ? 'no' : ''}" data-wkappr="${esc(id)}">${opts(APPR, r.appr, 'čeká')}</select></td>
+      <td><select class="cell" data-wkact="${esc(id)}">${opts(['Přišel', 'Nepřišel'], r.actual, '–')}</select></td>
+      <td><button class="btn secondary small" data-wkedit="${esc(id)}">Upravit</button></td></tr>`; }).join('')}</tbody></table></div>` : emptyMon('Víkendy', 'Na tento víkend zatím nikdo není v rozpisu. Přidej řádek, nebo nahraj sešit <b>Vikendovy_rozpis</b> v Importu.')}`;
+  // neplánovaní
+  h += `<h2>Neplánovaně přítomní</h2><p class="note">Kdo byl v závodě a nebyl ve schváleném rozpisu (vrátnice, docházka, Gemba). Manažer oddělení doplní vyjádření do středy.</p>
+    ${S.unpl.length ? `<div class="tbl-wrap"><table><thead><tr><th>Den</th><th>Jméno</th><th>Oddělení</th><th>Kat.</th><th>Příchod – odchod</th><th>Zjištěno</th><th class="num">Hodiny</th><th class="num">Náklad €</th><th>Vyjádření manažera</th><th></th></tr></thead><tbody>
+    ${S.unpl.map(x => { const u = x.u, id = Object.entries(STATE.wk[sat].unpl).find(([, v]) => v === u)[0]; return `<tr><td>${dayOf(u.date)} ${dmy(u.date)}</td><td><b>${esc(u.name)}</b></td><td>${esc(u.dept)}</td><td>${esc(u.cat)}</td><td>${esc(u.from)} – ${esc(u.to)}</td><td>${esc(u.source)}</td><td class="num">${fmt(x.hours, 1)}</td><td class="num">${fmt(x.cost)}</td><td class="wrap">${u.note ? esc(u.note) : '<span class="tag warn">chybí</span>'}</td><td><button class="btn secondary small" data-unedit="${esc(id)}">Upravit</button></td></tr>`; }).join('')}</tbody></table></div>` : ''}
+    <div class="btns" style="margin-top:.6rem"><button class="btn secondary small" id="wkUnplAdd">+ Neplánovaně přítomný</button></div>`;
+  // trend
+  const ts = wkSats().slice(-12);
+  if (ts.length > 1){
+    const D = W.depts.map(d => d[0]), TS = ts.map(s => { const x = wkSummary(s); return { s, x, by: Object.fromEntries(x.depts.map(d => [d.d, d.cost])), tot: x.tot.cost + x.tot.unplCost }; }), mx = Math.max(...TS.map(x => x.tot));
+    h += `<h2>Trend nákladů (Pá–Ne)</h2><div class="tbl-wrap"><table><thead><tr><th>Víkend</th>${D.map(d => `<th class="num">${esc(d)}</th>`).join('')}<th class="num">Neplánovaní</th><th class="num">Celkem €</th><th class="num">Směny</th><th class="num">Hodiny</th><th></th></tr></thead><tbody>
+      ${TS.map(t => `<tr ${t.s === sat ? 'class="cur"' : ''}><td>${wkShort(weekOfDate(t.s))} · ${dmy(t.s)}</td>${D.map(d => `<td class="num">${t.by[d] ? fmt(t.by[d]) : '<span class="muted">0</span>'}</td>`).join('')}<td class="num">${fmt(t.x.tot.unplCost)}</td><td class="num"><b>${fmt(t.tot)}</b></td><td class="num">${fmt(t.x.tot.shifts)}</td><td class="num">${fmt(t.x.tot.hours + t.x.tot.unplHours, 1)}</td><td style="width:22%">${shareBar(t.tot, mx).replace('p12"', 'p12 wide"')}</td></tr>`).join('')}</tbody></table></div>
+      <p class="note">Provozní odhad (sazba × hodiny × příplatek + odměna za směnu) – sleduj trend, ne shodu s účetnictvím.</p>`;
+  }
+  el.innerHTML = h;
+}
+
+// dialogy: řádek 12h, řádek víkendu, neplánovaně přítomný
+function openH12Row(id){
+  const w = h12Week(), H = MON().h12, r = id ? STATE.h12[w].rows[id] : { area: VIEW.h12a || 'Výroba', n: null }, dl = $('dlg');
+  const lines = [...H.lines, ...M().lines.map(l => l.name)], pos = Object.values(H.pos).flat().map(x => x[0]);
+  dl.innerHTML = `<form method="dialog" id="hForm" data-id="${esc(id || '')}"><h2 style="margin-top:0">${id ? esc(r.name) : 'Nový řádek'} · 12h ${wkLabel(w)}</h2>
+    <div class="frow"><label>Jméno a příjmení<input class="cell" id="hName" list="dlPeople" value="${esc(r.name || '')}"></label><label>Oblast<select class="cell" id="hArea">${opts(H.areas.map(a => a[0]), r.area)}</select></label></div>
+    <div class="frow"><label>Pozice<input class="cell" id="hPos" list="dlPos" value="${esc(r.pos || '')}"></label><label>Kat.<select class="cell" id="hCat">${opts(['DL', 'IDL'], r.cat, 'podle pozice')}</select></label><label>Linka / stroj<input class="cell" id="hLine" list="dlLines" value="${esc(r.line || '')}"></label></div>
+    <div class="frow"><label>Počet 12h směn v týdnu<input class="cell n" type="number" min="0" max="7" id="hN" value="${r.n ?? ''}"></label><label>Typ<select class="cell" id="hType">${opts(H.types, r.type)}</select></label><label>Do kdy<input class="cell" type="date" id="hUntil" value="${esc(r.until || '')}"></label></div>
+    <div class="frow"><label>Důvod<select class="cell" id="hReason">${opts(H.reasons, r.reason)}</select></label><label>Detail důvodu<input class="cell" id="hDetail" value="${esc(r.detail || '')}"></label></div>
+    <div class="frow"><label>Opatření – co 12h ukončí<input class="cell" id="hMeasure" value="${esc(r.measure || '')}" placeholder="např. nástup nového OP 3. 11., agentura od CW45"></label></div>
+    <div class="frow"><label>Schválení PM<select class="cell" id="hAppr">${opts(APPR, r.appr, 'čeká')}</select></label><label>Poznámka PM<input class="cell" id="hPm" value="${esc(r.pmNote || '')}"></label></div>
+    <p class="note" id="hErr">Hodiny navíc = směny × ${fmt(H.extraH)} h · náklad = hodiny × sazba (DL ${fmt(H.rate.DL, 2)} / IDL ${fmt(H.rate.IDL, 2)} €/h) × (1 + ${fmt(H.prem * 100)} %).</p>
+    ${dlist('dlPeople', peopleList().map(p => p.name))}${dlist('dlPos', pos)}${dlist('dlLines', lines)}
+    <div class="btns" style="justify-content:flex-end">${id ? '<button type="button" class="btn danger" id="hDel">Smazat</button>' : ''}<button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="hSave">Uložit</button></div></form>`;
+  dl.showModal();
+}
+function openWkRow(id){
+  const sat = wkSat(), W = MON().wk, r = id ? STATE.wk[sat].rows[id] : { dept: VIEW.wkd || 'Výroba', date: sat, mode: 'Na místě' }, dl = $('dlg');
+  const days = [-1, 0, 1].map(i => addDays(sat, i)), pos = (W.pos[r.dept] || Object.values(W.pos).flat()).map(x => x[0]);
+  dl.innerHTML = `<form method="dialog" id="wForm" data-id="${esc(id || '')}"><h2 style="margin-top:0">${id ? esc(r.name) : 'Nový řádek'} · víkend ${dmy(days[0])}–${dmy(days[2])}</h2>
+    <div class="frow"><label>Den (začátek směny)<select class="cell" id="wDate">${days.map(d => `<option value="${d}" ${d === r.date ? 'selected' : ''}>${dayOf(d)} ${dmy(d)}</option>`).join('')}</select></label><label>Oddělení<select class="cell" id="wDept">${opts(W.depts.map(d => d[0]), r.dept)}</select></label></div>
+    <div class="frow"><label>Jméno a příjmení<input class="cell" id="wName" list="dlPeople" value="${esc(r.name || '')}"></label><label>Pozice<input class="cell" id="wPos" list="dlPos" value="${esc(r.pos || '')}"></label><label>Kat.<select class="cell" id="wCat">${opts(['DL', 'IDL', 'SAL'], r.cat, 'podle pozice')}</select></label></div>
+    <div class="frow"><label>Směna<select class="cell" id="wShift">${opts([...W.shifts.map(s => s[0]), 'Jiný čas'], r.shift)}</select></label><label>Jiný čas<input class="cell" id="wOther" placeholder="08:00-12:00" value="${esc(r.other || '')}"></label><label>Režim<select class="cell" id="wMode">${opts(WK_MODES, r.mode)}</select></label></div>
+    <div class="frow"><label>Důvod<select class="cell" id="wReason">${opts(W.reasons, r.reason)}</select></label><label>Linka / stroj<input class="cell" id="wLine" list="dlLines" value="${esc(r.line || '')}"></label></div>
+    <div class="frow"><label>Konkrétní výstup (co se udělá)<input class="cell" id="wOut" value="${esc(r.output || '')}"></label></div>
+    <div class="frow"><label>Schválení PM<select class="cell" id="wAppr">${opts(APPR, r.appr, 'čeká')}</select></label><label>Poznámka PM<input class="cell" id="wPm" value="${esc(r.pmNote || '')}"></label><label>Skutečnost<select class="cell" id="wAct">${opts(['Přišel', 'Nepřišel'], r.actual)}</select></label></div>
+    <p class="note" id="wErr">Datum = den, kdy směna začíná (pátek noční = Pá 22:00 → So 06:00).${r.fix ? ' Archivní řádek: hodiny a náklad zůstávají zmrazené.' : ''}</p>
+    ${dlist('dlPeople', peopleList().map(p => p.name))}${dlist('dlPos', pos)}${dlist('dlLines', [...W.lines, ...M().lines.map(l => l.name)])}
+    <div class="btns" style="justify-content:flex-end">${id ? '<button type="button" class="btn danger" id="wDel">Smazat</button>' : ''}<button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="wSave">Uložit</button></div></form>`;
+  dl.showModal();
+}
+function openUnpl(id){
+  const sat = wkSat(), W = MON().wk, u = id ? STATE.wk[sat].unpl[id] : { date: sat }, dl = $('dlg'), days = [-1, 0, 1].map(i => addDays(sat, i));
+  dl.innerHTML = `<form method="dialog" id="uForm" data-id="${esc(id || '')}"><h2 style="margin-top:0">Neplánovaně přítomný</h2>
+    <div class="frow"><label>Den<select class="cell" id="uDate">${days.map(d => `<option value="${d}" ${d === u.date ? 'selected' : ''}>${dayOf(d)} ${dmy(d)}</option>`).join('')}</select></label><label>Jméno a příjmení<input class="cell" id="uName" list="dlPeople" value="${esc(u.name || '')}"></label></div>
+    <div class="frow"><label>Oddělení<select class="cell" id="uDept">${opts(W.depts.map(d => d[0]), u.dept)}</select></label><label>Kat.<select class="cell" id="uCat">${opts(['DL', 'IDL', 'SAL'], u.cat)}</select></label><label>Příchod<input class="cell" type="time" id="uFrom" value="${esc(u.from || '')}"></label><label>Odchod<input class="cell" type="time" id="uTo" value="${esc(u.to || '')}"></label></div>
+    <div class="frow"><label>Zjištěno (zdroj)<input class="cell" id="uSrc" value="${esc(u.source || '')}" placeholder="vrátnice, docházka, Gemba"></label></div>
+    <div class="frow"><label>Vyjádření manažera (proč, kdo povolil, opatření)<input class="cell" id="uNote" value="${esc(u.note || '')}"></label></div>
+    <p class="note" id="uErr"></p>${dlist('dlPeople', peopleList().map(p => p.name))}
+    <div class="btns" style="justify-content:flex-end">${id ? '<button type="button" class="btn danger" id="uDel">Smazat</button>' : ''}<button type="button" class="btn secondary" id="fClose">Zavřít</button><button type="button" class="btn" id="uSave">Uložit</button></div></form>`;
+  dl.showModal();
+}
+const newId = () => 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+async function onMonDialog(t){
+  const dl = $('dlg'), val = i => $(i).value.trim();
+  if (t.id === 'hSave' || t.id === 'hDel'){
+    const w = h12Week(), id = $('hForm').dataset.id || newId(), box = monBox('h12', w);
+    if (t.id === 'hDel'){ if (!armed(t)) return; box.rows[id] = null; }
+    else {
+      if (!val('hName')){ $('hErr').textContent = 'Vyplň jméno.'; return; }
+      const old = box.rows[id] || {};
+      box.rows[id] = { ...old, area: $('hArea').value || 'Výroba', name: val('hName'), pos: val('hPos'), cat: $('hCat').value, line: val('hLine'), n: num($('hN').value), type: $('hType').value, reason: $('hReason').value, detail: val('hDetail'), measure: val('hMeasure'), until: $('hUntil').value, appr: $('hAppr').value, pmNote: val('hPm'), src: old.src || 'app', updatedAt: new Date().toISOString() };
+    }
+    await saveMonPart('h12', w, 'rows', id); dl.close(); renderH12(); renderHome(); return true;
+  }
+  if (t.id === 'wSave' || t.id === 'wDel'){
+    const sat = wkSat(), id = $('wForm').dataset.id || newId(), box = monBox('weekend', sat);
+    if (t.id === 'wDel'){ if (!armed(t)) return; box.rows[id] = null; }
+    else {
+      if (!val('wName')){ $('wErr').textContent = 'Vyplň jméno.'; return; }
+      if ($('wShift').value === 'Jiný čas' && !/\d{1,2}[:.]\d{2}\s*[-–]\s*\d{1,2}[:.]\d{2}/.test(val('wOther'))){ $('wErr').textContent = 'U „Jiný čas“ zapiš čas ve tvaru 08:00-12:00.'; return; }
+      const old = box.rows[id] || {};
+      box.rows[id] = { ...old, date: $('wDate').value, dept: $('wDept').value || 'Výroba', name: val('wName'), pos: val('wPos'), cat: $('wCat').value, shift: $('wShift').value, other: val('wOther'), mode: $('wMode').value, reason: $('wReason').value, line: val('wLine'), output: val('wOut'), appr: $('wAppr').value, pmNote: val('wPm'), actual: $('wAct').value, src: old.src || 'app', updatedAt: new Date().toISOString() };
+    }
+    await saveMonPart('weekend', sat, 'rows', id); dl.close(); renderWk(); renderHome(); return true;
+  }
+  if (t.id === 'uSave' || t.id === 'uDel'){
+    const sat = wkSat(), id = $('uForm').dataset.id || newId(), box = monBox('weekend', sat);
+    if (t.id === 'uDel'){ if (!armed(t)) return; box.unpl[id] = null; }
+    else {
+      if (!val('uName') || !$('uFrom').value || !$('uTo').value){ $('uErr').textContent = 'Vyplň jméno, příchod a odchod.'; return; }
+      box.unpl[id] = { ...(box.unpl[id] || {}), date: $('uDate').value, name: val('uName'), dept: $('uDept').value, cat: $('uCat').value, from: $('uFrom').value, to: $('uTo').value, source: val('uSrc'), note: val('uNote'), src: box.unpl[id]?.src || 'app' };
+    }
+    await saveMonPart('weekend', sat, 'unpl', id); dl.close(); renderWk(); renderHome(); return true;
+  }
+}
+// jméno z aplikace → předvyplnit linku, pozici a kategorii
+function onMonDialogChange(e){
+  const id = e.target.id; if (id !== 'hName' && id !== 'wName') return;
+  const p = peopleList().find(x => nameKey(x.name) === nameKey(e.target.value)); if (!p) return;
+  const w = id === 'hName' ? h12Week() : weekOfDate(wkSat()), pre = id[0];
+  const set = (f, v) => { const el = $(pre + f); if (el && !el.value && v) el.value = v; };
+  set('Pos', posThisWeek(p, w) || p.pos); set('Line', colName(slotOf(p, w).line)); set('Cat', p.role === 'TL' ? 'IDL' : 'DL');
+}
+
+/* import sešitů monitoringu */
+async function handleMonFiles(files){
+  const box = $('monPreview'); box.innerHTML = '<p class="muted">Načítám…</p>';
+  const out = [], errs = [];
+  for (const f of files){ try{ out.push(await parseMonitor(f)); }catch(e){ errs.push(`<b>${esc(f.name)}:</b> ${esc(e.message)}`); } }
+  box.innerHTML = errs.map(e => `<div class="warnbox">${e}</div>`).join('');
+  if (!out.length) return;
+  box.innerHTML += `<h2>Náhled importu</h2><div class="tbl-wrap"><table><thead><tr><th>Soubor</th><th>Typ</th><th class="num">Řádků</th><th>Týdny / víkendy</th></tr></thead><tbody>
+    ${out.map(P => `<tr><td>${esc(P.file)}</td><td>${P.kind === 'h12' ? '12h směny' : 'Víkendový rozpis'}</td><td class="num">${fmt(P.n)}</td><td class="wrap">${P.kind === 'h12' ? Object.entries(P.weeks).sort().map(([w, r]) => `${wkShort(w)} (${r.length})`).join(', ') : Object.entries(P.sats).sort().map(([s, x]) => `${wkShort(weekOfDate(s))} So ${dmy(s)} (${x.rows.length})`).join(', ')}</td></tr>`).join('')}</tbody></table></div>
+    <p class="note">Řádky ze sešitu v těchto týdnech se nahradí. Řádky zadané v aplikaci zůstanou. Sazby, limity a seznamy se převezmou z listu Nastavení.</p>
+    <div class="btns"><button class="btn" id="btnMonSave">Uložit</button><button class="btn secondary" id="btnMonCancel">Zrušit</button></div>`;
+  $('btnMonSave').onclick = async () => { let ok = true; for (const P of out) ok = (await commitMonitor(P)) && ok; box.innerHTML = ''; VIEW.h12w = VIEW.wks = null; renderAll(); if (ok) toast(`Uloženo: ${out.map(P => P.kind === 'h12' ? '12h směny' : 'víkendový rozpis').join(' + ')}`); };
+  $('btnMonCancel').onclick = () => { box.innerHTML = ''; };
+}
+function renderMonInfo(){
+  const hw = h12Weeks(), ss = wkSats();
+  $('monInfo').innerHTML = `12h směny: ${hw.length ? hw.map(w => `${wkShort(w)} (${h12Rows(w).length})`).join(', ') : 'zatím nic'} · víkendy: ${ss.length ? ss.map(s => `${wkShort(weekOfDate(s))} (${wkRows(s).length})`).join(', ') : 'zatím nic'}`;
+}
+
 /* ===== 8. Export do Excelu ===== */
 async function saveFile(filename, data, type){
   const dl = window.claude?.use ? await window.claude.use('downloads').catch(() => null) : null;
@@ -1839,6 +2383,12 @@ async function exportXlsx(){
   if (D.people.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Jméno', 'Směna', ...D.cols.map(colName)]].concat(D.people.map(x => [x.name, [...x.shifts].join('/'), ...D.cols.map(c => x.cells[c] ? (x.cells[c].lvl || '·') + (x.cells[c].src === 'ručně' ? ' (ručně)' : '') : '')]))), 'Skill matrix');
   const DN = dleNeed(w);
   if (DN) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Proces','Hotové díly ks','Hodiny hotové','Hodiny polotovary','Std hodiny','Efektivita %','Potřeba lidí','Lidé v rozpisu','Bilance']].concat(DN.rows.map(r => [r.g, Math.round(r.fgQty), +r.hFG.toFixed(1), +r.hSub.toFixed(1), +r.h.toFixed(1), Math.round(r.eff*100), +r.need.toFixed(1), r.people ?? '', r.gap == null ? '' : +r.gap.toFixed(1)]))), 'Potřeba DLE');
+  const hw = h12Week(), HS = h12Summary(hw);
+  if (HS.rows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Týden', 'Oblast', 'Jméno a příjmení', 'Pozice', 'Kat.', 'Linka / stroj', 'Počet 12h směn', 'Typ', 'Důvod', 'Detail důvodu', 'Opatření', 'Do kdy', 'Hodiny navíc', 'Náklad navíc EUR', 'Schválení PM', 'Poznámka PM', 'Týdnů po sobě']]
+    .concat(HS.rows.map(x => [wkLabel(hw), x.r.area, x.r.name, x.r.pos, x.cat, x.r.line, x.r.n ?? '', x.r.type, x.r.reason, x.r.detail, x.r.measure, x.r.until, x.hours, +x.cost.toFixed(2), x.r.appr, x.r.pmNote, x.run]))), '12h směny');
+  const ws_ = wkSat(), WS = wkSummary(ws_);
+  if (WS.all.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Datum směny', 'Den', 'Oddělení', 'Jméno a příjmení', 'Kat.', 'Pozice', 'Směna', 'Jiný čas', 'Režim', 'Důvod', 'Linka / stroj', 'Konkrétní výstup', 'Hodiny', 'Náklad EUR', 'Schválení PM', 'Poznámka PM', 'Skutečnost']]
+    .concat(WS.all.map(x => [x.r.date, dayOf(x.r.date), x.r.dept, x.r.name, x.cat, x.r.pos, x.r.shift, x.r.other, x.r.mode, x.r.reason, x.r.line, x.r.output, x.hours, +x.cost.toFixed(2), x.r.appr, x.r.pmNote, x.r.actual]))), 'Víkend ' + dmy(ws_).replace(/\s/g, ''));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s4), 'Metodika');
   await saveFile(`Plan_FTE_${wkShort(w).replace('/','-')}.xlsx`, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
@@ -1875,8 +2425,53 @@ $('rosterBody').addEventListener('toggle', e => {
   const x = e.target; if (!x.matches?.('details[data-line]')) return;
   x.open ? ROSTER_OPEN.add(x.dataset.line) : ROSTER_OPEN.delete(x.dataset.line); LS.set(APP_KEY + '.open', [...ROSTER_OPEN]);
 }, true);
+$('dlg').addEventListener('change', onMonDialogChange);
 $('dlg').addEventListener('change', e => { if (e.target.id === 'fLine'){ const p = STATE.people[$('pForm').dataset.id]; $('fSkill').textContent = skillOf(p, e.target.value) || 'žádná'; $('fWPos').innerHTML = posOpts(e.target.value, ''); } });
 $('btnPersonAdd').onclick = () => openAdd(M().lines[0]?.id, 'R');
+$('h12Add').onclick = () => openH12Row(null);
+$('wkAdd').onclick = () => openWkRow(null);
+$('h12Weeks').addEventListener('click', e => { const b = e.target.closest('[data-h12w]'); if (b){ VIEW.h12w = b.dataset.h12w; renderH12(); } });
+$('wkSats').addEventListener('click', e => { const b = e.target.closest('[data-wks]'); if (b){ VIEW.wks = b.dataset.wks; renderWk(); } });
+$('h12Body').addEventListener('click', async e => {
+  if (e.target.closest('[data-go-imp]')){ go('import'); return; }
+  const a = e.target.closest('[data-h12a]'); if (a){ VIEW.h12a = a.dataset.h12a; renderH12(); return; }
+  const ed = e.target.closest('[data-h12edit]'); if (ed){ openH12Row(ed.dataset.h12edit); return; }
+  if (e.target.id === 'h12Take'){
+    const w = h12Week(), R = h12FromRoster(w), box = monBox('h12', w);
+    R.missing.forEach(p => box.rows['r-' + p.id.slice(0, 40)] = h12RowFromPerson(p, w));
+    if (await saveMonDoc('h12', w)) toast(`Převzato z rozpisu: ${R.missing.length} ${pl(R.missing.length, 'člověk', 'lidé', 'lidí')} – doplň počet směn, důvod a opatření.`);
+    renderH12(); renderHome();
+  }
+});
+$('h12Body').addEventListener('change', async e => {
+  if (e.target.id === 'h12x'){ VIEW.h12x = e.target.checked; renderH12(); return; }
+  const id = e.target.dataset.h12appr; if (id == null) return;
+  const w = h12Week(), r = STATE.h12[w].rows[id]; r.appr = e.target.value; r.updatedAt = new Date().toISOString();
+  await saveMonPart('h12', w, 'rows', id); renderH12(); renderHome();
+});
+$('wkBody').addEventListener('click', async e => {
+  if (e.target.closest('[data-go-imp]')){ go('import'); return; }
+  const sat = wkSat();
+  const d = e.target.closest('[data-wkd]'); if (d){ VIEW.wkd = d.dataset.wkd; renderWk(); return; }
+  const ed = e.target.closest('[data-wkedit]'); if (ed){ openWkRow(ed.dataset.wkedit); return; }
+  const un = e.target.closest('[data-unedit]'); if (un){ openUnpl(un.dataset.unedit); return; }
+  if (e.target.id === 'wkUnplAdd'){ openUnpl(null); return; }
+  const cf = e.target.closest('[data-cf]');
+  if (cf){ const box = monBox('weekend', sat); box.confirm ||= {}; box.confirm[cf.dataset.cf] = cf.dataset.st ? { state: cf.dataset.st, who: '', when: new Date().toISOString(), note: '' } : null;
+    await saveMonPart('weekend', sat, 'confirm', cf.dataset.cf); renderWk(); renderHome(); return; }
+  if (e.target.id === 'wkFixMode'){
+    const box = monBox('weekend', sat), ids = Object.keys(box.rows).filter(k => box.rows[k] && !box.rows[k].mode);
+    ids.forEach(k => box.rows[k].mode = 'Na místě');
+    if (await saveMonDoc('weekend', sat)) toast(`Režim „Na místě“ doplněn u ${ids.length} řádků`);
+    renderWk(); renderHome();
+  }
+});
+$('wkBody').addEventListener('change', async e => {
+  const id = e.target.dataset.wkappr ?? e.target.dataset.wkact; if (id == null) return;
+  const sat = wkSat(), r = STATE.wk[sat].rows[id];
+  r[e.target.dataset.wkappr != null ? 'appr' : 'actual'] = e.target.value; r.updatedAt = new Date().toISOString();
+  await saveMonPart('weekend', sat, 'rows', id); renderWk(); renderHome();
+});
 $('btnPlanGen').onclick = async () => {
   const w = STATE.planWeek; if (!w || !hasPeople()){ toast('Nejdřív naimportuj odvolávky a rozpisy směn.'); return; }
   STATE.plans[w] = generatePlan(w);
@@ -1971,6 +2566,11 @@ const dropD = $('dropDle');
 ['dragleave','drop'].forEach(ev => dropD.addEventListener(ev, e => { e.preventDefault(); dropD.classList.remove('over'); }));
 dropD.addEventListener('drop', e => handleDleFile(e.dataTransfer.files[0]));
 $('dleInput').addEventListener('change', e => { handleDleFile(e.target.files[0]); e.target.value = ''; });
+const dropM = $('dropMon');
+['dragenter','dragover'].forEach(ev => dropM.addEventListener(ev, e => { e.preventDefault(); dropM.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => dropM.addEventListener(ev, e => { e.preventDefault(); dropM.classList.remove('over'); }));
+dropM.addEventListener('drop', e => handleMonFiles([...e.dataTransfer.files]));
+$('monInput').addEventListener('change', e => { handleMonFiles([...e.target.files]); e.target.value = ''; });
 
 $('themeBtn').onclick = () => {
   const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -1992,6 +2592,7 @@ if (document.getElementById('seedData')){
     const sd = JSON.parse(document.getElementById('seedData').textContent);
     if (!hasPeople() && !Object.keys(STATE.exports).length){ Object.assign(STATE, sd); persistLocal(); }
     else if (sd.dle && (!STATE.dle || (STATE.dle.importedAt || '') < sd.dle.importedAt)){ STATE.dle = sd.dle; persistLocal(); }   // novější routing i do už používaného prohlížeče
+    if (sd.h12 && !Object.keys(STATE.h12).length && !Object.keys(STATE.wk).length){ Object.assign(STATE, { mon: sd.mon, h12: sd.h12, wk: sd.wk }); persistLocal(); }   // 12h a víkendy i do už používaného prohlížeče
   }catch(e){ console.warn('seed', e); }
 }
 fixPlanWeek();
